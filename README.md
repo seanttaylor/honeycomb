@@ -20,7 +20,7 @@ This prevents accidental cross-service access and ensures every inter-service ca
 The sandbox applies a strict policy model:
 If a service is not explicitly permitted to call another service, the access is rejected at the proxy boundary. Policies define the APIs a service may call and nothing else is reachable.
 
-### **⚡ Plugin System**
+### **⚡ Plugin System (v5.1 and later)**
 
 Honeycomb supports behavioral extensions through plugins — declarative, class-based augmentations that attach to an existing service at construction time. Plugins may run:
 
@@ -44,51 +44,83 @@ The application is started via a callback that receives an unrestricted sandbox 
 
 The outside world, however, only receives a minimal surface: a safe `dispatchEvent` method and the ability to register plugins.
 
-## Release Notes (version 5.0)
+## Plugin System Overview
 
-- Merges deferred autostart (v4.2) with strict policy enforcement (v5).
-- Access to service API is **denied by default** for modules without a policy entry specifying authorization
-- Service constructors receive a restricted sandbox produced by the internal `sandbox.declare()` method.
+Honeycomb features a lightweight plugin mechanism that allows applications to **extend or alter the behavior of individual services at runtime**, without modifying the services themselves.
 
-Usage notes:
+The core goals of this system are:
 
-- Access policies are the final positional argument to the `Sandbox()` constructor. Here is an example of the policies interface:
+## **1. Externalized Behavior Modification**
 
-```
-{
-  ModuleName: {
-    allowedAPIs: ['OtherService', 'YetAnotherService']
-    },
-  }
-}
-```
+Plugins allow functionality to be injected _from outside_ a service’s implementation.
+This makes it possible to:
+
+- add cross-cutting behavior (e.g., metrics, instrumentation)
+- override or layer on new business rules
+- modify the execution path of one or more methods
+- patch or augment legacy services without editing their source
+
+The intent is similar to traditional plugin systems found in editors, browsers, or audio software: a plugin is an external module that _hooks into_ the lifecycle or execution of another module.
+
+## **2. Explicit Targeting**
+
+Each plugin (defined as a class) explicitly declares **which service it modifies** via a static `target` property.
+
+This makes plugin influence discoverable, auditable, and trackable when the application starts.
+Nothing happens automatically or implicitly—plugins must be intentionally registered and explicitly tied to a specific service.
+
+## **3. Controlled Execution Modes**
+
+Plugins define a static `mode` indicating _how_ they interact with the target service:
+
+- **pre_ex** — Run before a method executes
+- **post_ex** — Run after a method completes
+- **override** — Replace the method’s implementation entirely
+
+These modes give plugin authors a clear, predictable model for how their extensions integrate into the service’s execution flow.
+
+> Each plugin method returns either an `Array` instance ( for extending methods with positional args), an object (for named args or structured overrides), or `undefined` (for side-effects only). Anything other return type is rejected by the framework, ensuring predictable integration patterns.
 
 
-> **BREAKING CHANGE** -- services are constructed _by default_ with no access to peer services unless specified in an access policy.
+## **4. Isolated Construction Context**
 
-### Migration & Operational Notes
+Plugins receive the same **restricted sandbox** that the service they extend receives.
+They do _not_ gain access to host internals or the full `sandbox.my.*` namespace containing user-defined services.
 
-Version 5 is restricted by default. Services that need to access peer services _must_ have explicit policy entries as follows:
+This maintains Honeycomb’s security and policy model:
+plugins extend services, but they do not bypass access restrictions.
 
-```
-const policies = {
-  OrderService: { allowedAPIs: ['DataAccessLayer', 'NotificationService'] },
-  DataAccessLayer: { allowedAPIs: [] }, // no outgoing service access
-};
-```
+## **5. Deterministic Application at Service Instantiation**
 
-#### Access Policies
+Plugins are applied **when a service instance is created**, inside the framework core that already mediates lifecycle events.
 
-If a module has no entry in policies, it **cannot** access any namespaces in `my` services (i.e. `sandbox.my.*`) though it still has access to the framework core methods on (`sandbox.core.*`).
+This ensures:
 
-The application host (the callback to the `Sandbox` constructor) is unchanged: it receives the full unrestricted sandbox (so app wiring code will continue to work as before). 
+- plugins run _before_ any application code touches the service
+- bootstrap modules are extended before autostart
+- startup ordering is deterministic
+- services never exist in a “pre-plugin” state visible to the host
 
-The only place that changed is the module constructor parameter — modules now get a restricted sandbox.
+Because instantiation is lazy (via getters on `sandbox.my`), plugin application happens exactly once per module instance.
 
-##### Policy Enforcement
+## **6. Small Surface Area, Minimal Intrusion**
 
-Access attempts to unauthorized modules throws an exception `POLICY_ERROR`; attempts to access unknown services throws an exception `INTERNAL_ERROR` with guidance.
+The plugin API is intentionally small:
 
-#### Autostart
+- A single `plugin()` registration entry point
+- A plugin class exposes a static `target` property
+- A plugin class exposes a static `mode` property
+- A constructor invoked with a policy-restricted sandbox
 
-Services classes defined with `static bootstrap = true` will be constructed automatically during startup, but _only after all lazy getters have been defined_ — so the constructors of automatically starting modules can safely access other services if permitted by policy.
+This keeps the system composable and predictable.
+Plugins should be easy to write, easy to audit, and difficult to misuse.
+
+## Architectural Philosophy
+
+The plugin system balances two conflicting design values:
+
+- **Plugins should be powerful enough to alter behavior.**
+- **Plugins should not obscure or destabilize core service logic.**
+
+The goal is not to create a general-purpose dependency injection framework or aspect-oriented programming engine.
+Instead, Honeycomb plugins provide a **surgical** extension point—just enough power for application developers to adapt services while still respecting policies and boundaries.
