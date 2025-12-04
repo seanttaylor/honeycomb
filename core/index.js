@@ -1,4 +1,5 @@
 import sha256 from 'js-sha256';
+import { PluginProvider } from './plugin.js';
 
 /**
  * Generates a version 4 UUID
@@ -78,7 +79,7 @@ export class Sandbox extends EventTarget {
 
         if (PluginDef) {
           try {
-            this.#applyPlugin(moduleName, instance, PluginDef, declared);
+            PluginProvider.applyPlugin(moduleName, instance, PluginDef, declared);
           } catch (ex) {
             console.error(
               `INTERNAL_ERROR (core): **EXCEPTION ENCOUNTERED** while applying plugin to service (${moduleName}). See details -> ${ex.message}`
@@ -257,35 +258,13 @@ export class Sandbox extends EventTarget {
    * @returns {void}
    */
   #plugin(PluginDefinition) {
-    if (typeof PluginDefinition !== 'function') {
-      console.error(
-        `INTERNAL_ERROR (core): Could not register plugin. See details -> Plugins **MUST** be defined as a class.`
-      );
+    const isValid = PluginProvider.validatePlugin(PluginDefinition);
+
+    if (!isValid) {
       return;
     }
 
-    const serviceName = PluginDefinition.target;
-
-    if (!serviceName) {
-      console.error(
-        `INTERNAL_ERROR (core): Could not register plugin (${PluginDefinition.name}). See details -> Plugins **MUST** be implemented with a static property 'target' specifying the name of the service the plugin will extend.`
-      );
-      return;
-    }
-
-    const mode =
-      PluginDefinition.mode ||
-      PluginDefinition.static?.mode ||
-      PluginDefinition?.constructor?.mode;
-
-    if (!this.#SUPPORTED_PLUGIN_EXECUTION_MODE.includes(mode)) {
-      console.error(
-        `INTERNAL_ERROR (core): Could not register plugin (${PluginDefinition.constructor.name}) for "${serviceName}". See details -> Plugins **MUST** declare static property 'mode' = "pre_ex" | "post_ex" | "override".`
-      );
-      return;
-    }
-
-    this.#plugins[serviceName] = PluginDefinition;
+    this.#plugins[PluginDefinition.target] = PluginDefinition;
   }
 
   /**
