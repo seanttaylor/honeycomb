@@ -5,15 +5,10 @@ export class PluginNOOP {
   
     constructor(sandbox) {
       this.#logger = sandbox.core.logger.getLoggerInstance();
-      // plugin has access to sandboxed services
       this.#logger.log('What a feeling!');
     }
-    
-    /**
-     * @param {String} receiver 
-     * @returns String[]
-     */
-    hello(receiver) {
+  
+    async hello(receiver, args) {
       //throw new Error('uh oh');
       return [`smelly ${receiver}`, 'yo mama'];
     }

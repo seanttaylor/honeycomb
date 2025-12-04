@@ -1,5 +1,5 @@
 import sha256 from 'js-sha256';
-import { PluginProvider } from './plugin.js';
+import { PluginProvider } from './plugin/core.plugin.index.js';
 
 /**
  * Generates a version 4 UUID
@@ -17,7 +17,6 @@ export class Sandbox extends EventTarget {
   #registry = {}; // module factories (moduleName -> factory)
   #policies = {}; // moduleName -> { allowedAPIs: [] }
   #plugins = {}; // module plugins (moduleName -> factory)
-  #SUPPORTED_PLUGIN_EXECUTION_MODE = ['pre_ex', 'post_ex', 'override'];
 
   /**
    * @param {String[]} modules - module names to register for this sandbox instance
@@ -79,7 +78,12 @@ export class Sandbox extends EventTarget {
 
         if (PluginDef) {
           try {
-            PluginProvider.applyPlugin(moduleName, instance, PluginDef, declared);
+            PluginProvider.applyPlugin(
+              moduleName,
+              instance,
+              PluginDef,
+              declared
+            );
           } catch (ex) {
             console.error(
               `INTERNAL_ERROR (core): **EXCEPTION ENCOUNTERED** while applying plugin to service (${moduleName}). See details -> ${ex.message}`
@@ -140,15 +144,16 @@ export class Sandbox extends EventTarget {
     });
 
     // Execute the app callback with the unrestricted sandbox.
-    try {
-      setTimeout(() => {
-        callback(fullSandbox);
-      }, 0);
-    } catch (ex) {
-      console.error(
-        `INTERNAL_ERROR (sandbox): Exception in application callback. See details -> ${ex.message}`
-      );
-    }
+    setTimeout(async () => {
+      try {
+        await callback(fullSandbox);
+      } catch (ex) {
+        console.error(
+          `INTERNAL_ERROR (core): Exception in application callback. See details -> ${ex.message}`
+        );
+      }
+      // timeout of 0 milliseconds ensures the callback fires on the next tick allowing any plugins defined to be registered
+    }, 0);
 
     // Restrict external return surface: only expose a safe dispatchEvent method.
     return {
@@ -265,104 +270,6 @@ export class Sandbox extends EventTarget {
     }
 
     this.#plugins[PluginDefinition.target] = PluginDefinition;
-  }
-
-  /**
-   * @param {String} moduleName - the service to be extended
-   * @param {Object} instance - an instance of the service that will be extended
-   * @param {Object} PluginDef - the class that implements the plugin
-   * @param {Object} declaredSandbox - the restricted sandbox created for the module
-
-   */
-  #applyPlugin(moduleName, instance, PluginDef, declaredSandbox) {
-    const mode = PluginDef.mode;
-    const pluginInstance = new PluginDef(declaredSandbox);
-    const pluginName = pluginInstance.constructor.name;
-    const targetName = instance.constructor.name;
-
-    const pluginProto = Object.getPrototypeOf(pluginInstance);
-    const methodNames = Object.getOwnPropertyNames(pluginProto).filter(
-      (methodName) =>
-        methodName !== 'constructor' &&
-        typeof pluginProto[methodName] === 'function'
-    );
-
-    methodNames.forEach((method) => {
-      if (typeof instance[method] !== 'function') {
-        // Warn — plugin implements a method not present on the target service
-        console.warn(
-          `WARNING (core): Plugin (${pluginName}) targeting "${moduleName}" implements method "${method}" which **DOES NOT** exist on the target service. Plugins may **ONLY** extend methods currently defined on the target.`
-        );
-        return;
-      }
-
-      const original = instance[method].bind(instance);
-      const pluginHandler = pluginInstance[method].bind(pluginInstance);
-
-      if (mode === 'override') {
-        console.info(`⚡ Attaching plugin (${pluginName}) to target (${targetName}) in mode (${mode})`)
-
-        instance[method] = async (...args) => {
-          try {
-            // plugin fully replaces original
-            return await pluginHandler(...args);
-          } catch (ex) {
-            console.error(
-              `INTERNAL_ERROR (${pluginName}): **EXCEPTION ENCOUNTERED** while executing plugin method (${pluginName}.${method}). This plugin targets ${targetName}. See details -> ${ex.message}`
-            );
-            console.warn(
-              `WARNING (core): Executing original method implemented in target service (${targetName}.${method}) after override plugin exception. **EXPECT ERRORS**`
-            );
-            return await original(...args);
-          }
-        };
-      } else if (mode === 'pre_ex') {
-        console.info(`⚡ Attaching plugin (${pluginName}) to target (${targetName}) in mode (${mode})`)
-        instance[method] = async (...args) => {
-          // plugin can optionally return replacement args (array) or undefined
-          try {
-            const maybe = await pluginHandler(...args);
-            let finalArgs = args;
-            if (Array.isArray(maybe)) {
-              finalArgs = maybe;
-            }
-            return await original(...finalArgs);
-          } catch (ex) {
-            //const pluginName = pluginInstance.constructor.name;
-            //const targetName = instance.constructor.name;
-
-            console.error(
-              `INTERNAL_ERROR (${pluginName}): **EXCEPTION ENCOUNTERED** while executing plugin method (${pluginName}.${method}). This plugin targets ${targetName}. See details -> ${ex.message}`
-            );
-            console.warn(
-              `WARNING (core): Executing original method implemented in target service (${targetName}.${method}) after pre-execution plugin exception. **EXPECT ERRORS**`
-            );
-            return await original(...args);
-          }
-        };
-      } else if (mode === 'post_ex') {
-        console.info(`⚡ Attaching plugin (${pluginName}) to target (${targetName}) in mode (${mode})`);
-
-        instance[method] = async (...args) => {
-          const result = await original(...args);
-          // plugin receives args and result; plugin may observe but cannot alter return value
-          try {
-            await pluginHandler(...args, result);
-          } catch (ex) {
-            // plugin errors shouldn't break core behavior — surface console.error
-            console.error(
-              `INTERNAL_ERROR (${pluginName}): **EXCEPTION ENCOUNTERED** while executing post-execution plugin method (${pluginName}.${method}). This plugin targets ${targetName}. See details -> ${ex.message}`
-            );
-            return result; // preserve original return value
-          }
-        };
-      } else {
-        // unreachable due to validation in #plugin
-        throw new Error(
-          `INTERNAL_ERROR (${pluginName}): **EXCEPTION ENCOUNTERED** during plugin execution. See details ->  Unsupported execution mode (${mode}) for plugin (${pluginName}) targeting ${moduleName}`
-        );
-      }
-    });
   }
 
   /**
