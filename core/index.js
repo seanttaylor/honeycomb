@@ -1,5 +1,7 @@
 import sha256 from 'js-sha256';
+
 import { PluginProvider } from './plugin/core.plugin.index.js';
+import { HCSystemConfigurationProvider } from './core.config.js';
 
 /**
  * Generates a version 4 UUID
@@ -273,11 +275,34 @@ export class Sandbox extends EventTarget {
   }
 
   /**
-   * Static modules registry. Same as previous versions.
+   * Static modules registry
    */
   static modules = {
     of: function (moduleName, moduleClass) {
       Sandbox.modules[moduleName] = moduleClass;
+    },
+    autoLoad: async function () {
+      const HC_CONFIG = await HCSystemConfigurationProvider.loadConfig();
+      const eligibleServices = await HCSystemConfigurationProvider.discoverServices(HC_CONFIG);
+
+      if (!eligibleServices.length) {
+        console.warn(`WARNING (core): Could not autoload services. No eligible services found. Ensure the correct service directory is defined in .honeyrc.js and that filenames match the patterns defined in the patterns field.`);
+        return;
+      }
+
+      await Promise.all(eligibleServices.map(async (path) => {
+        const serviceDefinition = await import(path);
+        let serviceName; 
+        
+        if (!serviceDefinition.default.service) {
+          serviceName = serviceDefinition.default.name;
+          console.info(`INFO (core): Service classes defined **WITHOUT** a static "service" property will be registered with the name of their constructor (${serviceName})`);
+        } else {
+          serviceName = serviceDefinition.default.service;
+        }
+
+        Sandbox.modules.of(serviceName, serviceDefinition.default);
+      }));    
     },
   };
 }

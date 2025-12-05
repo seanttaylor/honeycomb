@@ -4,10 +4,12 @@ import { ApplicationService } from '../system.js';
  * This service is just used as a sanity check to ensure
  * the module system is working
  */
-export class NOOPService extends ApplicationService {
+export default class NOOPService extends ApplicationService {
+  //static service = "ScoobyDoo"
+
   #logger;
   #sandbox;
-
+   
   /**
    * @param {ISandbox} sandbox
    */

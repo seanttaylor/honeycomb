@@ -1,10 +1,8 @@
 import { ApplicationService } from '../system.js';
 
-export class CacheService extends ApplicationService {
+export default class FeedService extends ApplicationService {
   #logger;
   #sandbox;
-
-  static bootstrap = true;
 
   /**
    * @param {ISandbox} sandbox

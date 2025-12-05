@@ -4,18 +4,11 @@ import { Sandbox } from './core/index.js';
 /******** PLUGINS ********/
 import { PluginNOOP } from './plugins/noop.js';
 
-/******** SERVICES ********/
-import { NOOPService } from './services/noop.js';
-import { FeedService } from './services/feed.js';
-import { CacheService } from './services/cache.js';
-
 
 //*Example sandboxed application with Honeycomb
 (async function main() {
   try {
-    Sandbox.modules.of('NOOPService', NOOPService);
-    Sandbox.modules.of('FeedService', FeedService);
-    Sandbox.modules.of('CacheService', CacheService);
+    await Sandbox.modules.autoLoad();
 
     // Define policies
     const policies = {

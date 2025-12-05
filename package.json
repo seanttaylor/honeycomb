@@ -1,9 +1,10 @@
 {
     "name": "honeycomb",
     "description": "A lightweight JS framework with sandboxed modular services, lazy instantiation and robust plug-in system.",
-    "version": "6.0.0",
+    "version": "6.1.0",
     "private": true,
     "dependencies": {
+        "fast-glob": "^3.3.3",
         "js-sha256": "^0.11.1",
         "timers": "0.1.1"
     },
