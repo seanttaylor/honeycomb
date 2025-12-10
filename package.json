@@ -4,6 +4,8 @@
     "version": "6.1.0",
     "private": true,
     "dependencies": {
+        "@honeycombc/cloud": "file://./hc2/packages/cloud",
+        "@atomiclotus/random-name-generator": "^1.0.8",
         "fast-glob": "^3.3.3",
         "js-sha256": "^0.11.1",
         "timers": "0.1.1"

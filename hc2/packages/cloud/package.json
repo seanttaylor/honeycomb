@@ -1,0 +1,9 @@
+{
+    "name": "@honeycomb/cloud",
+    "version": "0.0.1-dev",
+    "main": "index.js",
+    "type": "module",
+    "license": "MIT",
+    "engines": { "node": ">=18" }
+}
+  
