@@ -7,7 +7,11 @@
         "start": "node --env-file=.env index.js "
     },
     "dependencies": {
-        "@honeycomb/cloud": "file://../../hc2/packages/cloud"
+        "@honeycomb/cloud": "file://../../hc2/packages/cloud",
+        "ajv": "^8.17.1",
+        "body-parser": "^2.2.1",
+        "express": "^5.2.1",
+        "morgan": "^1.10.1"
     },
     "type": "module"
 }
