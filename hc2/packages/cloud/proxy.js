@@ -1,7 +1,7 @@
 import { JsonRpcClient } from './rpc-client.js';
 
 /**
- * @typedef {Object} HC2ProxyRegistration
+ * @typedef {Object} HC2ServiceRegistration
  * @property {String} app - the high-level application this service is part of
  * @property {String} serviceName - the service name peer application services will use to access this service's APIs
  * @property {Number} version - the version number of the service
@@ -104,8 +104,7 @@ export class HC2Proxy {
 
     const ctx = this;
 
-    this.#HC2_INSTANCE_URL = new URL(HC2_INSTANCE_URL);
-    this.#HC2_INSTANCE_ID = this.#HC2_INSTANCE_URL.pathname;
+    this.#HC2_INSTANCE_URL = HC2_INSTANCE_URL;
     this.#EXCLUDED_BUILTIN_METHODS = EXCLUDED_BUILTIN_METHODS;
     this.app = app;
 
@@ -156,7 +155,7 @@ export class HC2Proxy {
   /**
    * Registers a Honeycomb application service with the HC2 instance specified in the constructor
    * @param {Object} reg
-   * @param {HC2ProxyRegistration} reg.payload - the registration details of the service
+   * @param {HC2ServiceRegistration} reg.payload - the registration details of the service
    * @param {String} reg.signature - signature of the service requesting registration
    * @returns {Object} - the registration receipt
    */
@@ -164,7 +163,7 @@ export class HC2Proxy {
     try {
         // TODO: validate registration object
         // certificate response
-        const certVerificationReq = await fetch(`${this.#HC2_INSTANCE_URL.href}/api/v1/certs`, {
+        const certVerificationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/certs`, {
             method: 'POST',
             body: JSON.stringify(reg),
             headers: {
@@ -234,7 +233,7 @@ export class HC2Proxy {
     } catch (ex) {
       console.error(
         `INTERNAL_ERROR (honeycomb.HC2.Proxy): **EXCEPTION ENCOUNTERED** during service registration with HC2 instance (${
-          this.#HC2_INSTANCE_ID
+          this.#HC2_INSTANCE_URL
         }). See details -> ${ex.message}`
       );
     }

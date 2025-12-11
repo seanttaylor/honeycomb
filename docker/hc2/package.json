@@ -1,13 +1,12 @@
 {
-    "name": "noop-service",
-    "description": "This service is just used as a sanity check to ensure the module system is working",
+    "name": "hc2",
+    "description": "A single HC2 instance running on Honeycomb Cloud Platform (HCP)",
     "version": "0.0.1",
     "private": true,
     "scripts": {
         "start": "node index.js "
     },
     "dependencies": {
-        "@honeycomb/cloud": "file:./hc2/packages/cloud",
         "ajv": "^8.17.1",
         "body-parser": "^2.2.1",
         "express": "^5.2.1",

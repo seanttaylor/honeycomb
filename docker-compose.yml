@@ -1,0 +1,57 @@
+services:
+  noop_service:
+    container_name: noop_service
+    build:
+      context: .
+      dockerfile: ./docker/noop/Dockerfile
+    env_file: ./docker/noop/.env
+    expose:
+      - 3001
+    volumes:
+      - ./docker/noop:/src
+      - ./hc2:/src/hc2
+    networks:
+      - shared_network
+    #restart: always
+  feed_service:
+    container_name: feed_service
+    build:
+      context: .
+      dockerfile: ./docker/feed/Dockerfile
+    env_file: ./docker/feed/.env
+    expose:
+      - 3001
+    volumes:
+      - ./docker/feed:/src
+      - ./hc2:/src/hc2
+    networks:
+      - shared_network
+    #restart: always
+  hc2_proxy:
+    container_name: hc2_proxy
+    build:
+      context: .
+      dockerfile: ./docker/hc2-proxy/Dockerfile
+    env_file: ./docker/hc2-proxy/.env
+    expose:
+      - 3001
+    ports: 
+      - 3001:3001
+    volumes:
+      - ./docker/hc2-proxy:/src
+    networks:
+      - shared_network
+  hc2:
+    container_name: hc2
+    build:
+      context: .
+      dockerfile: ./docker/hc2/Dockerfile
+    env_file: ./docker/hc2/.env
+    expose:
+      - 3001
+    volumes:
+      - ./docker/hc2:/src
+    networks:
+      - shared_network
+networks:
+  shared_network:

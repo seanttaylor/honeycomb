@@ -1,6 +1,6 @@
 {
-    "name": "noop-service",
-    "description": "This service is just used as a sanity check to ensure the module system is working",
+    "name": "feed-service",
+    "description": "This service handles feeds",
     "version": "0.0.1",
     "private": true,
     "scripts": {

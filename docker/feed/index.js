@@ -6,18 +6,17 @@ import http from 'http';
 import morgan from 'morgan';
 import Ajv from 'ajv';
 import figlet from 'figlet';
-
-import { NOOPService } from './service.js';
+import { FeedService } from './service.js';
 
 /**
- * @returns {Object}
-*/
+  * @returns {Object}
+  */
 async function generateKeyPair() {
     try {
-        return await crypto.subtle.generateKey(
-            {
-                name: 'RSA-PSS',
-                modulusLength: 2048,
+      return await crypto.subtle.generateKey(
+        {
+          name: 'RSA-PSS',
+          modulusLength: 2048,
           publicExponent: new Uint8Array([1, 0, 1]),
           hash: 'SHA-256',
         },
@@ -55,12 +54,11 @@ async function signPayload(payload, privateKey) {
     };
 }
 
-(async function HC2NOOPService() {
+(async function HC2FeedService() {
     /******** CONTAINER ENVIRONMENT VARIABLES ********/
     const SERVICE_NAME = process.env.SERVICE_NAME;
     const VERSION = process.env.VERSION;
     const HC2_INSTANCE_URL = process.env.HC2_INSTANCE_URL;
-    const HC2_INSTANCE_ID = process.env.HC2_INSTANCE_ID;
     const PORT = process.env.PORT || 3000;
     const HC2_SERVICE_CERTIFICATE = JSON.parse(atob(process.env.HC2_SERVICE_CERTIFICATE));
     
@@ -71,7 +69,7 @@ async function signPayload(payload, privateKey) {
         const { publicKey: PUBLIC_KEY, privateKey: PRIVATE_KEY } = await generateKeyPair();
         const serviceRegistrationRequest = {
             app: 'current.ly',
-            service: 'NOOPService',
+            service: 'FeedService',
             version: 1,
             api: {
             methods: [
@@ -101,10 +99,10 @@ async function signPayload(payload, privateKey) {
         console.info(`${SERVICE_NAME} v${VERSION}`);
         
         const hc2 = new HC2Proxy(HC2_INSTANCE_URL);
-        const noopService = new NOOPService(hc2);
+        const feedService = new FeedService(hc2);
         const hc2ServiceRegistrationReceipt = await hc2.register(SERVICE_SIGNED_REGISTRATION_REQ);
 
-        const reply = await hc2.my.FeedService.hello({ from: SERVICE_NAME });
+        //const reply = await hc2.my.FeedService.hello({ from: SERVICE_NAME });
 
         /******** HTTP SERVER ********/
         const app = express();
@@ -112,7 +110,7 @@ async function signPayload(payload, privateKey) {
         app.use(morgan('combined'));
 
         app.get('/health', (req, res) => {
-            const serviceStatus = noopService.status;
+            const serviceStatus = feedService.status;
             res.status(200).json(serviceStatus);
         });
 
@@ -149,12 +147,12 @@ async function signPayload(payload, privateKey) {
                     return;
                 }
 
-                const response = await noopService[name](methodParams);
+                const response = await feedService[name](methodParams);
                 res.status(200).json({
                     message: response
                 });
             } catch(ex) {
-                console.error(`INTERNAL_ERROR (NOOPService): **EXCEPTION ENCOUNTERED** while executing service method. See details -> ${ex.message}`);
+                console.error(`INTERNAL_ERROR (FeedService): **EXCEPTION ENCOUNTERED** while executing service method. See details -> ${ex.message}`);
                 next(ex);
             }
         });
@@ -172,4 +170,4 @@ async function signPayload(payload, privateKey) {
     } catch(ex) {
         console.error(`INTERNAL_ERROR (HC2.Service): **EXCEPTION ENCOUNTERED** while running the HC2 service (${SERVICE_NAME}). See details -> ${ex.message}` );
     }
-}());
+}())
