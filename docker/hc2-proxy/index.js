@@ -1,10 +1,8 @@
-import bodyParser from 'body-parser';
 import express from 'express';
 import http from 'http';
-import { createProxyMiddleware } from 'http-proxy-middleware';
-
 import morgan from 'morgan';
-import Ajv from 'ajv';
+
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import figlet from 'figlet';
 
 
@@ -15,22 +13,19 @@ import figlet from 'figlet';
     const HC2_INSTANCE_URL = process.env.HC2_INSTANCE_URL;
     const HC2_INSTANCE_ID = process.env.HC2_INSTANCE_ID;
     const PORT = process.env.PORT || 3000;
-    
+
     try {
         const banner = await figlet.text(`${SERVICE_NAME} v${VERSION}`);
-        console.log(banner);
-
-        /******** HTTP SERVER ********/
         const app = express();
-        const proxyMiddleware = createProxyMiddleware({
+        const proxy = createProxyMiddleware({
             target: HC2_INSTANCE_URL,
-            pathFilter: ['/api']
+            changeOrigin: true,
+            pathFilter: [ '/api' ]
         });
 
-        app.use(bodyParser.json());
-        app.use(morgan('combined'));
-        app.use(proxyMiddleware);
-
+        app.use(proxy);
+        app.use(morgan('combined'));    
+        
         app.get('/health', (req, res) => {
             res.status(200).json({
                 name: 'HC2Proxy',
@@ -46,10 +41,11 @@ import figlet from 'figlet';
         });
 
         http.createServer(app).listen(PORT, () => {
+            console.log(banner);
             console.log(`HC2Proxy serving instance (${HC2_INSTANCE_ID}) listening on port ${PORT}`);
         });
                 
     } catch(ex) {
-        console.error(`INTERNAL_ERROR (HC2.Service): **EXCEPTION ENCOUNTERED** while running the HC2 service (${SERVICE_NAME}). See details -> ${ex.message}` );
+        console.error(`INTERNAL_ERROR (HC2.Proxy): **EXCEPTION ENCOUNTERED** while running the HC2 service proxy (${SERVICE_NAME}). See details -> ${ex.message}` );
     }
 }());

@@ -10,9 +10,11 @@
         "ajv": "^8.17.1",
         "body-parser": "^2.2.1",
         "express": "^5.2.1",
+        "express-http-proxy": "^2.1.2",
         "figlet": "^1.9.4",
         "http-proxy-middleware": "^3.0.5",
-        "morgan": "^1.10.1"
+        "morgan": "^1.10.1",
+        "raw-body": "^3.0.2"
     },
     "type": "module"
 }

@@ -4,6 +4,9 @@ services:
     build:
       context: .
       dockerfile: ./docker/noop/Dockerfile
+    depends_on:
+      - hc2_proxy
+      - hc2
     env_file: ./docker/noop/.env
     expose:
       - 3001
@@ -18,6 +21,9 @@ services:
     build:
       context: .
       dockerfile: ./docker/feed/Dockerfile
+    depends_on:
+      - hc2_proxy
+      - hc2
     env_file: ./docker/feed/.env
     expose:
       - 3001
@@ -33,10 +39,10 @@ services:
       context: .
       dockerfile: ./docker/hc2-proxy/Dockerfile
     env_file: ./docker/hc2-proxy/.env
+    depends_on:
+      - hc2
     expose:
       - 3001
-    ports: 
-      - 3001:3001
     volumes:
       - ./docker/hc2-proxy:/src
     networks:
@@ -49,8 +55,12 @@ services:
     env_file: ./docker/hc2/.env
     expose:
       - 3001
+    ports: 
+      - 3001:3001
     volumes:
       - ./docker/hc2:/src
+      # this mount was required to get @honeycomb/cloud to install in the hc2 container. Likely the folder structure, filename conventions or the hc2 Dockerfile needs updating
+      - ./hc2:/src/hc2
     networks:
       - shared_network
 networks:

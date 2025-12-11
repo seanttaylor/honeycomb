@@ -156,24 +156,28 @@ export class HC2Proxy {
    * Registers a Honeycomb application service with the HC2 instance specified in the constructor
    * @param {Object} reg
    * @param {HC2ServiceRegistration} reg.payload - the registration details of the service
+   * @param {HC2ServiceCertificate} reg.payload.HC2ServiceCertificate 
    * @param {String} reg.signature - signature of the service requesting registration
    * @returns {Object} - the registration receipt
    */
   async register(reg) {
     try {
+        const certId = reg.payload.HC2ServiceCertificate.payload.metadata.certificateId;
+
         // TODO: validate registration object
         // certificate response
-        const certVerificationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/certs`, {
+        const certVerificationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/certs/${certId}/verify`, {
             method: 'POST',
             body: JSON.stringify(reg),
             headers: {
-                authorization: 'super-secret-credential'
+              'content-type': 'application/json',
+              authorization: 'super-secret-credential'
             }
         });
 
         if (certVerificationReq.status >= 400) {
-            const response = certVerificationReq.json();
-            console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${certVerificationRequest.status}). See details -> ${response.title}`);
+            const response = await certVerificationReq.json();
+            console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${certVerificationReq.status}). See details -> ${response.title}`);
             return {};
         }
 
@@ -207,6 +211,7 @@ export class HC2Proxy {
             method: 'POST',
             body: JSON.stringify(reg),
             headers: {
+                contentType: 'application/json',
                 authorization: 'super-secret-credential'
             }
         });

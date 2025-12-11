@@ -7,6 +7,8 @@ COPY ./docker/hc2/service.js /src
 COPY ./docker/hc2/package.json /src
 COPY ./docker/hc2/package-lock.json /src
 COPY ./docker/hc2/.env /src
+COPY ./hc2 /src/hc2
+
 
 RUN chown node -R /src
 
