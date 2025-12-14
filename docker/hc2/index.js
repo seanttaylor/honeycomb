@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import figlet from 'figlet';
 import { HC2Instance } from './service.js';
 
+debugger;
 
 /**
   * @returns {Object}
@@ -84,12 +85,15 @@ async function signPayload(payload, privateKey) {
             });
         });
 
-        app.post('/api/v1/certs', async (req, res) => {
+        app.post('/api/v1/certs', async (req, res, next) => {
             try {
+              // TODO: validate service certificate request body
+              // return 400 if invalid
                 const certificateRequest = req.body;
                 const serviceCertificate =  await hc2Instance.generateServiceCert(certificateRequest);
 
-               res.status(400).send({});
+                res.set('X-HC2-Resource', `urn:hcp:cert:${serviceCertificate.payload.metadata.certificateId}`);
+                res.status(201).json(serviceCertificate);
             } catch(ex) {
                 console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): **EXCEPTION ENCOUNTERED** while generating service certificate . See details -> ${ex.message}`);
                 next(ex);
@@ -97,12 +101,14 @@ async function signPayload(payload, privateKey) {
         });
 
         app.post('/api/v1/certs/:id/verify', async (req, res) => {
+
+          try {
             const serviceCert = req.body;
             const certId = req.params.id;
             const certStatus =  await hc2Instance.verifyHC2ServiceCertificate(serviceCert);
 
             if (!certStatus.isVerified) {
-                console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): Cannot complete registration for service (${serviceCert.payload.service}). The HC2 service certificate could not be verified. See docs.`);
+                console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): Cannot complete verification for service (${serviceCert.payload.service}). The HC2 service certificate could not be verified. See docs.`);
 
                 res.status(403).json({
                     type: "/probs/cert-invalid",
@@ -113,23 +119,47 @@ async function signPayload(payload, privateKey) {
                 return;
             }
 
-            const certClaimsStatus = await hc2Instance.validateCertificateClaims(serviceCert);
+            res.status(204).send();
 
-            if (!certClaimsStatus.isValid) {
-                console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Cannot complete registration for service (${serviceCert.payload.service}). The HC2 service certificate claims could not be validated. See docs.`);
-
-                res.status(401).json({
-                    type: "/probs/cert-claims-invalid",
-                    title: 'The service certificate claims could not be validated against the registration request',
-                    detail: 'All claims asserted in the HC2 service certificate **MUST** match those in the service registration request. See docs.',
-                    instance: `/certs/${certId}/msgs/${crypto.randomUUID()}`,
-                });
-                return;
-            }
-
-            res.status(200).json({});
+          } catch(ex) {
+            console.error(`INTERNAL_ERROR (honeycomb.HC2): **EXCEPTION ENCOUNTERED** during service certificate verfication. See details -> ${ex.message}`);
+          }
         });
 
+        app.post('/api/v1/services', async (req, res, next) => {
+          try {
+            const registrationRequest = { 
+              payload: Object.assign(req.body.payload, {             HC2ServiceCertificate: JSON.parse(atob(
+                  req.body.payload.HC2ServiceCertificate
+                )) 
+              }) 
+           };
+            const certId = registrationRequest.payload.HC2ServiceCertificate.payload.metadata.certificateId;
+
+            const certClaimsStatus = await hc2Instance.validateCertificateClaims(registrationRequest);
+
+            if (!certClaimsStatus.isValid) {
+              console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Cannot complete registration for service (${registrationRequest.payload.service.name}). The HC2 service certificate claims could not be validated. See docs.`);
+
+              res.status(401).json({
+                type: "/probs/cert-claims-invalid",
+                title: 'The service certificate claims could not be validated against the registration request',
+                detail: 'All claims asserted in the HC2 service certificate **MUST** match those in the service registration request. See docs.',
+                instance: `/certs/${certId}/msgs/${crypto.randomUUID()}`,
+              });
+              return;
+            }
+
+           const serviceRegistrationReceipt = await hc2Instance.registerService(registrationRequest);
+
+           res.set('X-HC2-Resource', `urn:hcp:service:registration-receipt:${serviceRegistrationReceipt.serviceId}`);
+           res.status(201).json(serviceRegistrationReceipt);
+
+          } catch(ex) {
+            console.error(`INTERNAL_ERROR (honeycomb.HC2): **EXCEPTION ENCOUNTERED** during service registration. See details -> ${ex.message}`);
+            next(ex);
+          }
+        });
         app.use((err, req, res, next) => {
             const status = err.status || 500;
             console.error(err);

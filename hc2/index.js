@@ -236,6 +236,7 @@ export class HC2Instance {
       metadata: {
         deploymentId: crypto.randomUUID(),
         hc2InstanceId: this.#INSTANCE_ID,
+        timestamp: new Date().toISOString(),
         issuedAt: new Date().getTime(),
         //EXPIRES IN ONE WEEK
         expiresAt: new Date().getTime() + 604800000,

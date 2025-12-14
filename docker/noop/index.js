@@ -63,6 +63,8 @@ async function signPayload(payload, privateKey) {
     const HC2_INSTANCE_ID = process.env.HC2_INSTANCE_ID;
     const PORT = process.env.PORT || 3000;
     const HC2_SERVICE_CERTIFICATE = JSON.parse(atob(process.env.HC2_SERVICE_CERTIFICATE));
+
+    console.log({HC2_SERVICE_CERTIFICATE})
     
     try {
         const banner = await figlet.text(`${SERVICE_NAME} v${VERSION}`);

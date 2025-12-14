@@ -56,5 +56,14 @@ export const HC2Utilities = {
       }
       return bytes.buffer;
     },
+    /** 
+     * Convert an ArrayBuffer into a string
+     * from https://developer.chrome.com/blog/how-to-convert-arraybuffer-to-and-from-string/
+     * @param {ArrayBuffer} buf
+     * @returns {String}
+     */
+    toString(buf) {
+      return String.fromCharCode.apply(null, new Uint8Array(buf));
+    }
   }
 }
