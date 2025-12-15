@@ -155,20 +155,31 @@ export class HC2Proxy {
   /**
    * Registers a Honeycomb application service with the HC2 instance specified in the constructor
    * @param {Object} reg
+   * @param {Object} reg.payload
+   * @param {String} reg.payload.app
+   * @param {Object} reg.payload.service
    * @param {HC2ServiceRegistration} reg.payload - the registration details of the service
-   * @param {HC2ServiceCertificate} reg.payload.HC2ServiceCertificate 
+   * @param {HC2ServiceCertificate} reg.payload.HC2ServiceCertificate - service certificate issued by an HC2 instance in stringified and base64-encoded 
    * @param {String} reg.signature - signature of the service requesting registration
    * @returns {Object} - the registration receipt
    */
   async register(reg) {
+    const { service } = reg.payload;
+    const HC2ServiceCertificate = JSON.parse(
+      atob(reg.payload.HC2ServiceCertificate)
+    );
+
     try {
-        const certId = reg.payload.HC2ServiceCertificate.payload.metadata.certificateId;
+        const certId = HC2ServiceCertificate.payload.metadata.certificateId;
+        if (!HC2ServiceCertificate) {
+          throw Error('Could not parse service certificate. It may be **undefined**')
+        }
 
         // TODO: validate registration object
         // certificate response
         const certVerificationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/certs/${certId}/verify`, {
             method: 'POST',
-            body: JSON.stringify(reg),
+            body: JSON.stringify(HC2ServiceCertificate),
             headers: {
               'content-type': 'application/json',
               authorization: 'super-secret-credential'
@@ -176,65 +187,33 @@ export class HC2Proxy {
         });
 
         if (certVerificationReq.status >= 400) {
-            const response = await certVerificationReq.json();
-            console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${certVerificationReq.status}). See details -> ${response.title}`);
-            return {};
+          const response = await certVerificationReq.json();
+          console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${certVerificationReq.status}). See details -> ${response.title}`);
+          return {};
         }
 
-        if (certVerificationReq.status >= 200 && certVerificationReq.status < 300) {
-            console.info(`HC2 service certificate verified for service (${reg.payload.service})`);
+        if (certVerificationReq.status >= 204) {
+          console.info(`HC2 service certificate verified for service (${service.name})`);
         }
 
-
-      /*
-      
-      const certificateResponse =
-        await this.#HC2_INSTANCE.verifyHC2ServiceCertificate(reg);
-      if (!certificateResponse.isVerified) {
-        console.error(
-          `INTERNAL_ERROR (honeycomb.HC2.Proxy): Cannot complete registration for service (${reg.payload.service}). The HC2 service certificate could not be verified. See docs.`
-        );
-        return;
-      }
-
-      const validationReponse =
-        this.#HC2_INSTANCE.validateCertificateClaims(reg);
-
-      if (!validationReponse.isValid) {
-        console.error(
-          `INTERNAL_ERROR (honeycomb.HC2.Proxy): Cannot complete registration for service (${reg.payload.service}). The HC2 service certificate claims could not be validated. See docs.`
-        );
-        return;
-      }*/
-
-        const serviceRegistrationReq = await fetch(`${this.#HC2_INSTANCE_URL.href}/api/v1/services`, {
-            method: 'POST',
-            body: JSON.stringify(reg),
-            headers: {
-                contentType: 'application/json',
-                authorization: 'super-secret-credential'
-            }
+        const serviceRegistrationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/services`, {
+          method: 'POST',
+          body: JSON.stringify(reg),
+          headers: {
+            'content-type': 'application/json',
+            authorization: 'super-secret-credential'
+          }
         });
 
         if (serviceRegistrationReq.status >= 400) {
-            const response = serviceRegistrationReq.json();
-            console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${serviceRegistrationReq.status}). See details -> ${response.title}`);
-            return {};
+          const response = serviceRegistrationReq.json();
+          console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${serviceRegistrationReq.status}). See details -> ${response.title}`);
+          return {};
         }
 
         const response = await serviceRegistrationReq.json();
-
-
-      /*
-      const serviceRegistrationReceipt =
-        await this.#HC2_INSTANCE.registerService(reg);
-      //update HC2Proxy's local route table from HC2 instance's authoritative copy
-      this.#INTERNAL_ROUTE_TABLE = new Map(this.#HC2_INSTANCE.routeTable);
-      // track service registrations on the HC2 instance
-      this.services = new Set(this.#HC2_INSTANCE.services);
-      */
-
-      return response;
+        console.info(`HC2 service registration completed successfully on instance (${response.hc2InstanceId}) with serviceId (${response.serviceId}) and service alias (${response.serviceShortName})`);
+        return response;
     } catch (ex) {
       console.error(
         `INTERNAL_ERROR (honeycomb.HC2.Proxy): **EXCEPTION ENCOUNTERED** during service registration with HC2 instance (${

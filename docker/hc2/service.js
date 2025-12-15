@@ -142,7 +142,7 @@ export class HC2Instance {
         if (!isValid) {
             console.error(
             `INTERNAL_ERROR (honeycomb.HC2): Service registration failed for service (${
-                request.service
+                request.service.name
             }). Could not validate HC2 service certificate claims. See details -> ${JSON.stringify(
                 ajv.errors
             )}`
@@ -198,5 +198,12 @@ export class HC2Instance {
             `INTERNAL_ERROR (honeycomb.HC2): Service registration failure. Could not generate registration receipt for service (${reg.payload.service.name}). See details -> ${ex.message}`
             );
         }
+    }
+
+    /**
+     * @returns Object[]
+     */
+    async getServices() {
+        return Array.from(this.serviceRegistry.values());
     }
 }

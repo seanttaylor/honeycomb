@@ -6,7 +6,7 @@ import http from 'http';
 import morgan from 'morgan';
 import Ajv from 'ajv';
 import figlet from 'figlet';
-import { FeedService } from './service.js';
+import { FOHService } from './service.js';
 
 /**
   * @returns {Object}
@@ -59,8 +59,8 @@ async function signPayload(payload, privateKey) {
     const SERVICE_NAME = process.env.SERVICE_NAME;
     const VERSION = process.env.VERSION;
     const HC2_INSTANCE_URL = process.env.HC2_INSTANCE_URL;
-    const PORT = process.env.PORT || 3000;
-    const HC2_SERVICE_CERTIFICATE = JSON.parse(atob(process.env.HC2_SERVICE_CERTIFICATE));
+    const PORT = process.env.PORT || 3001;
+    const HC2_SERVICE_CERTIFICATE = process.env.HC2_SERVICE_CERTIFICATE;
     
     try {
         const banner = await figlet.text(`${SERVICE_NAME} v${VERSION}`);
@@ -68,30 +68,40 @@ async function signPayload(payload, privateKey) {
 
         const { publicKey: PUBLIC_KEY, privateKey: PRIVATE_KEY } = await generateKeyPair();
         const serviceRegistrationRequest = {
-            app: 'current.ly',
-            service: 'FeedService',
-            version: 1,
-            api: {
-            methods: [
-                {
-                name: 'hello',
-                params: {
-                    type: 'object',
-                    properties: {
-                    receiver: {
-                        type: 'string',
+            app: 'scoop.ly',
+            service: {
+                name: 'FOHService',
+                version: '0.0.1',
+                dependsOn: ['CacheService'],
+                ports: [3001],
+                api: {
+                    description:
+                    'This service is just used as a sanity check to ensure the module system is working',
+                    methods: [
+                    {
+                        name: 'hello',
+                        params: {
+                        type: 'object',
+                        properties: {
+                            receiver: {
+                            type: 'string',
+                            },
+                            sender: {
+                            type: 'string',
+                            },
+                        },
+                        required: ['receiver'],
+                        additionalProperties: false,
+                        },
                     },
-                    sender: {
-                        type: 'string',
-                    },
-                    },
-                    required: ['receiver'],
-                    additionalProperties: false,
+                    ],
                 },
+                network: {
+                    internalOnly: false,
+                    publicHostName: 'foh',
+                    rpcEndpoint: 'http://foh_service:3001/rpc',
                 },
-            ],
             },
-            callbackURL: 'http://foo.bar.baz.cloud',
             HC2ServiceCertificate: HC2_SERVICE_CERTIFICATE
         };
         const SERVICE_SIGNED_REGISTRATION_REQ = await signPayload(serviceRegistrationRequest, PRIVATE_KEY);
@@ -99,10 +109,11 @@ async function signPayload(payload, privateKey) {
         console.info(`${SERVICE_NAME} v${VERSION}`);
         
         const hc2 = new HC2Proxy(HC2_INSTANCE_URL);
-        const feedService = new FeedService(hc2);
+        const fohService = new FOHService(hc2);
         const hc2ServiceRegistrationReceipt = await hc2.register(SERVICE_SIGNED_REGISTRATION_REQ);
 
-        //const reply = await hc2.my.FeedService.hello({ from: SERVICE_NAME });
+        const reply = await hc2.my.NOOPService.hello({ from: SERVICE_NAME });
+        console.log({reply})
 
         /******** HTTP SERVER ********/
         const app = express();
@@ -110,7 +121,7 @@ async function signPayload(payload, privateKey) {
         app.use(morgan('combined'));
 
         app.get('/health', (req, res) => {
-            const serviceStatus = feedService.status;
+            const serviceStatus = fohService.status;
             res.status(200).json(serviceStatus);
         });
 
@@ -147,7 +158,7 @@ async function signPayload(payload, privateKey) {
                     return;
                 }
 
-                const response = await feedService[name](methodParams);
+                const response = await fohService[name](methodParams);
                 res.status(200).json({
                     message: response
                 });

@@ -10,7 +10,7 @@ class ApplicationService {
   
 }
 
-export class FeedService extends ApplicationService {
+export class FOHService extends ApplicationService {
   #logger;
   #sandbox;
 

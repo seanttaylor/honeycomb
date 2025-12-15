@@ -85,6 +85,7 @@ async function signPayload(payload, privateKey) {
             });
         });
 
+        /******** CERTS ********/
         app.post('/api/v1/certs', async (req, res, next) => {
             try {
               // TODO: validate service certificate request body
@@ -108,7 +109,7 @@ async function signPayload(payload, privateKey) {
             const certStatus =  await hc2Instance.verifyHC2ServiceCertificate(serviceCert);
 
             if (!certStatus.isVerified) {
-                console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): Cannot complete verification for service (${serviceCert.payload.service}). The HC2 service certificate could not be verified. See docs.`);
+                console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): Cannot complete verification for service (${serviceCert.payload.service.name}). The HC2 service certificate could not be verified. See docs.`);
 
                 res.status(403).json({
                     type: "/probs/cert-invalid",
@@ -126,6 +127,7 @@ async function signPayload(payload, privateKey) {
           }
         });
 
+        /******** SERVICES ********/
         app.post('/api/v1/services', async (req, res, next) => {
           try {
             const registrationRequest = { 
@@ -149,7 +151,7 @@ async function signPayload(payload, privateKey) {
               });
               return;
             }
-
+            
            const serviceRegistrationReceipt = await hc2Instance.registerService(registrationRequest);
 
            res.set('X-HC2-Resource', `urn:hcp:service:registration-receipt:${serviceRegistrationReceipt.serviceId}`);
@@ -160,6 +162,22 @@ async function signPayload(payload, privateKey) {
             next(ex);
           }
         });
+
+        app.get('/api/v1/services', async (req, res, next) => {
+          try { 
+            const items = await hc2Instance.getServices();
+            res.set('X-HC2-Resource', 'urn:hcp:service:registration-receipt');
+            res.status(200).json({
+              count: items.length,
+              items
+            });
+
+          } catch(ex) {
+            console.error(`INTERNAL_ERROR (honeycomb.HC2): **EXCEPTION ENCOUNTERED** while fetching instance services. See details -> ${ex.message}`);
+            next(ex);
+          }
+        })
+
         app.use((err, req, res, next) => {
             const status = err.status || 500;
             console.error(err);

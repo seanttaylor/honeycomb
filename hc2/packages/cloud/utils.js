@@ -14,7 +14,7 @@ export const HC2Utilities = {
     return p;
   },
   /**
-   * Generates a sha256 hash
+   * Generates a bas64-encoded sha256 hash
    * @param {String} str 
    * @returns {String}
    */

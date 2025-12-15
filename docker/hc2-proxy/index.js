@@ -20,7 +20,8 @@ import figlet from 'figlet';
         const proxy = createProxyMiddleware({
             target: HC2_INSTANCE_URL,
             changeOrigin: true,
-            pathFilter: [ '/api' ]
+            pathFilter: [ '/api' ],
+            logger: morgan('combined')
         });
 
         app.use(proxy);

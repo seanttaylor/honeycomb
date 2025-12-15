@@ -62,40 +62,49 @@ async function signPayload(payload, privateKey) {
     const HC2_INSTANCE_URL = process.env.HC2_INSTANCE_URL;
     const HC2_INSTANCE_ID = process.env.HC2_INSTANCE_ID;
     const PORT = process.env.PORT || 3000;
-    const HC2_SERVICE_CERTIFICATE = JSON.parse(atob(process.env.HC2_SERVICE_CERTIFICATE));
+    const HC2_SERVICE_CERTIFICATE = process.env.HC2_SERVICE_CERTIFICATE;
 
-    console.log({HC2_SERVICE_CERTIFICATE})
-    
     try {
         const banner = await figlet.text(`${SERVICE_NAME} v${VERSION}`);
         console.log(banner);
 
         const { publicKey: PUBLIC_KEY, privateKey: PRIVATE_KEY } = await generateKeyPair();
+        
         const serviceRegistrationRequest = {
-            app: 'current.ly',
-            service: 'NOOPService',
-            version: 1,
-            api: {
-            methods: [
-                {
-                name: 'hello',
-                params: {
-                    type: 'object',
-                    properties: {
-                    receiver: {
-                        type: 'string',
-                    },
-                    sender: {
-                        type: 'string',
-                    },
-                    },
-                    required: ['receiver'],
-                    additionalProperties: false,
+            app: 'scoop.ly',
+            service: {
+                name: 'NOOPService',
+                version: '0.0.1',
+                dependsOn: ['CacheService'],
+                ports: [3001],
+                api: {
+        description:
+          'This service is just used as a sanity check to ensure the module system is working',
+        methods: [
+          {
+            name: 'hello',
+            params: {
+              type: 'object',
+              properties: {
+                receiver: {
+                  type: 'string',
                 },
+                sender: {
+                  type: 'string',
                 },
-            ],
+              },
+              required: ['receiver'],
+              additionalProperties: false,
             },
-            callbackURL: 'http://foo.bar.baz.cloud',
+          },
+        ],
+                },
+                network: {
+                    internalOnly: false,
+                    publicHostName: 'noop',
+                    rpcEndpoint: 'http://noop_service:3001/rpc',
+                },
+            },
             HC2ServiceCertificate: HC2_SERVICE_CERTIFICATE
         };
         const SERVICE_SIGNED_REGISTRATION_REQ = await signPayload(serviceRegistrationRequest, PRIVATE_KEY);
@@ -106,7 +115,8 @@ async function signPayload(payload, privateKey) {
         const noopService = new NOOPService(hc2);
         const hc2ServiceRegistrationReceipt = await hc2.register(SERVICE_SIGNED_REGISTRATION_REQ);
 
-        const reply = await hc2.my.FeedService.hello({ from: SERVICE_NAME });
+        const reply = await hc2.my.FOHService.hello({ from: SERVICE_NAME });
+        console.log({reply});
 
         /******** HTTP SERVER ********/
         const app = express();
