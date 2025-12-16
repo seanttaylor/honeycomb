@@ -20,13 +20,55 @@ import figlet from 'figlet';
         const proxy = createProxyMiddleware({
             target: HC2_INSTANCE_URL,
             changeOrigin: true,
-            pathFilter: [ '/api' ],
-            logger: morgan('combined')
+            //pathFilter: [ '/api/v1/profiles' ],
+        });
+        
+        app.use(morgan('combined'));
+
+        app.get('/api/v1/profiles', async(req, res, next) => {
+            try {
+                res.set('X-Count', 1);
+                res.set('X-HC2-Resource', 'urn:hcp:service:hc2:hc2-service-profile');
+                res.status(200).json([{
+                    serviceId: '4173dbd4-fcf8-4768-8b87-a8e2a2b2f24f',
+                    name: 'NOOPService',
+                    version: '0.0.1',
+                    dependsOn: [
+                        'CacheService'
+                    ],
+                    api: {
+                        description: 'This service is just used as a sanity check to ensure the module system is working',
+                        methods: [
+                            {
+                                name: 'hello',
+                                params: {
+                                type: 'object',
+                                properties: {
+                                    receiver: {
+                                        type: 'string'
+                                    },
+                                    sender: {
+                                        type: 'string'
+                                    }
+                                },
+                                required: [
+                                    'receiver'
+                                ],
+                                    additionalProperties: false
+                                }
+                            }
+                        ]
+                    },
+                    serviceShortName: 'strong-jackal',
+                    callbackURL: 'http://noop_service:3001/rpc',
+                    createdAt: '2025-12-16T19:18:53.196Z'  
+                }]);
+            } catch(ex) {
+                console.error(`INTERNAL_ERROR (honeycomb.HC2.proxy): **EXCEPTION ENCOUNTERED** while fetching service profiles. See details -> ${ex.message}`);
+                next(ex);
+            }
         });
 
-        app.use(proxy);
-        app.use(morgan('combined'));    
-        
         app.get('/health', (req, res) => {
             res.status(200).json({
                 name: 'HC2Proxy',
@@ -34,6 +76,8 @@ import figlet from 'figlet';
                 timestamp: new Date().toISOString()
             });
         });
+
+        app.use(proxy);
 
         app.use((err, req, res, next) => {
             const status = err.status || 500;
