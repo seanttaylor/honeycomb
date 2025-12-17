@@ -6,8 +6,6 @@ import morgan from 'morgan';
 import figlet from 'figlet';
 import { HC2Instance } from './service.js';
 
-debugger;
-
 /**
   * @returns {Object}
   */
@@ -109,15 +107,15 @@ async function signPayload(payload, privateKey) {
             const certStatus =  await hc2Instance.verifyHC2ServiceCertificate(serviceCert);
 
             if (!certStatus.isVerified) {
-                console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): Cannot complete verification for service (${serviceCert.payload.service.name}). The HC2 service certificate could not be verified. See docs.`);
+              console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): Cannot complete verification for service (${serviceCert.payload.service.name}). The HC2 service certificate could not be verified. See docs.`);
 
-                res.status(403).json({
-                    type: "/probs/cert-invalid",
-                    title: `The integrity of the service certificate (${certId}) could not be verified`,
-                    detail: 'Service registraion requests **MUST** be accompanied by a **VALID** service certificate issued by an HC2 instance. See docs.',
-                    instance: `/certs/${certId}/msgs/${crypto.randomUUID()}`,
-                });
-                return;
+              res.status(403).json({
+                type: "/probs/cert-invalid",
+                title: `The integrity of the service certificate (${certId}) could not be verified`,
+                detail: 'Service registraion requests **MUST** be accompanied by a **VALID** service certificate issued by an HC2 instance. See docs.',
+                instance: `/certs/${certId}/msgs/${crypto.randomUUID()}`,
+              });
+              return;
             }
 
             res.status(204).send();
@@ -131,13 +129,14 @@ async function signPayload(payload, privateKey) {
         app.post('/api/v1/services', async (req, res, next) => {
           try {
             const registrationRequest = { 
-              payload: Object.assign(req.body.payload, {             HC2ServiceCertificate: JSON.parse(atob(
+              payload: Object.assign(req.body.payload, {             
+                HC2ServiceCertificate: JSON.parse(atob(
                   req.body.payload.HC2ServiceCertificate
                 )) 
               }) 
            };
-            const certId = registrationRequest.payload.HC2ServiceCertificate.payload.metadata.certificateId;
 
+            const certId = registrationRequest.payload.HC2ServiceCertificate.payload.metadata.certificateId;
             const certClaimsStatus = await hc2Instance.validateCertificateClaims(registrationRequest);
 
             if (!certClaimsStatus.isValid) {
@@ -152,10 +151,17 @@ async function signPayload(payload, privateKey) {
               return;
             }
             
-           const serviceRegistrationReceipt = await hc2Instance.registerService(registrationRequest);
-
-           res.set('X-HC2-Resource', `urn:hcp:service:registration-receipt:${serviceRegistrationReceipt.serviceId}`);
-           res.status(201).json(serviceRegistrationReceipt);
+            const serviceRegistrationReceipt = await hc2Instance.registerService(registrationRequest);
+            /*
+            await nano.insert({ 
+              _id: serviceRegistrationReceipt.id, 
+              claims: registrationRequest.service, 
+              receipt: serviceRegistrationReceipt 
+            });
+            */
+            res.set('X-Count', 1);
+            res.set('X-HC2-Resource', serviceRegistrationReceipt.urn);
+            res.status(201).json(serviceRegistrationReceipt);
 
           } catch(ex) {
             console.error(`INTERNAL_ERROR (honeycomb.HC2): **EXCEPTION ENCOUNTERED** during service registration. See details -> ${ex.message}`);
@@ -166,11 +172,10 @@ async function signPayload(payload, privateKey) {
         app.get('/api/v1/services', async (req, res, next) => {
           try { 
             const items = await hc2Instance.getServices();
+
+            res.set('X-Count', items.length);
             res.set('X-HC2-Resource', 'urn:hcp:service:registration-receipt');
-            res.status(200).json({
-              count: items.length,
-              items
-            });
+            res.status(200).json(items);
 
           } catch(ex) {
             console.error(`INTERNAL_ERROR (honeycomb.HC2): **EXCEPTION ENCOUNTERED** while fetching instance services. See details -> ${ex.message}`);
@@ -178,17 +183,17 @@ async function signPayload(payload, privateKey) {
           }
         })
 
-        app.use((err, req, res, next) => {
-            const status = err.status || 500;
-            console.error(err);
-            res.status(status).send({ status, error: 'There was an error.' });
-        });
+      app.use((err, req, res, next) => {
+        const status = err.status || 500;
+        console.error(err);
+        res.status(status).send({ status, error: 'There was an error.' });
+      });
 
-        http.createServer(app).listen(PORT, () => {
-            console.log(`HC2 instance (${HC2_INSTANCE_ID}) listening on port ${PORT}`);
-        });
+      http.createServer(app).listen(PORT, () => {
+        console.log(`HC2 instance (${HC2_INSTANCE_ID}) listening on port ${PORT}`);
+      });
                 
     } catch(ex) {
-        console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): **EXCEPTION ENCOUNTERED** while running the HC2 instance (${HC2_INSTANCE_ID}). See details -> ${ex.message}` );
+      console.error(`INTERNAL_ERROR (honeycomb.HC2.instance): **EXCEPTION ENCOUNTERED** while running the HC2 instance (${HC2_INSTANCE_ID}). See details -> ${ex.message}`);
     }
 }());

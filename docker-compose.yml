@@ -43,8 +43,6 @@ services:
       - hc2
     expose:
       - 3001
-    ports:
-      - 3001:3001
     volumes:
       - ./docker/hc2-proxy:/src
     networks:
@@ -54,16 +52,32 @@ services:
     build:
       context: .
       dockerfile: ./docker/hc2/Dockerfile
+    depends_on:
+      - couchdb
     env_file: ./docker/hc2/.env
     expose:
       - 3001
-    #ports: 
-    #  - 3001:3001
+    ports: 
+      - 3001:3001
     volumes:
       - ./docker/hc2:/src
       # this mount was required to get @honeycomb/cloud to install in the hc2 container. Likely the folder structure, filename conventions or the hc2 Dockerfile needs updating
       - ./hc2:/src/hc2
     networks:
       - shared_network
+  couchdb:
+    image: couchdb:3.3
+    container_name: couchdb
+    ports:
+      - "5984:5984"
+    environment:
+      COUCHDB_USER: admin
+      COUCHDB_PASSWORD: super_secret
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    networks:
+      - shared_network
 networks:
   shared_network:
+volumes:
+  couchdb_data:

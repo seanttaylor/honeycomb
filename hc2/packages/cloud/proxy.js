@@ -518,7 +518,7 @@ export class HC2Proxy {
         }
 
         const response = await serviceRegistrationReq.json();
-        console.info(`HC2 service registration completed successfully on instance (${response.hc2InstanceId}) with serviceId (${response.serviceId}) and service alias (${response.serviceShortName})`);
+        console.info(`HC2 service registration completed successfully on instance (${response.hc2InstanceId}) with service id (${response.serviceId}) and service alias (${response.alias})`);
         return response;
     } catch (ex) {
       console.error(
