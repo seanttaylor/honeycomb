@@ -6,6 +6,26 @@ import Nano from 'nano'
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import figlet from 'figlet';
 
+/**
+ * Listens for documment updates to the database at {COUCH_DB_NAME}
+ * @param {Object} change - the change object emitted by CouchDB
+ * @returns {void}
+ */
+function onRegistrationUpdate(change) {
+  console.log(change);
+  // TODO: Extract the relevant data for service profiles
+  // TODO: Persist the service profiles in a local store
+};
+
+/**
+ * Triggered in the event of an error in the CouchDB watcher
+ * @param {Object} error 
+ * @returns {void}
+ */
+function onCouchDBError(error) {
+  console.error(`INTERNAL_ERROR (HC2.Proxy): An error occurred while watching the CouchDB instance for changes. See details -> ${error.message}`);
+}
+
 (async function HC2ProxyServer() {
   /******** CONTAINER ENVIRONMENT VARIABLES ********/
   const COUCH_DB_NAME = process.env.COUCH_DB_NAME;
@@ -32,6 +52,10 @@ import figlet from 'figlet';
       target: HC2_INSTANCE_URL,
       changeOrigin: true,
     });
+
+    db.changesReader.start({ includeDocs: true })
+    .on('change', onRegistrationUpdate)
+    .on('error', onCouchDBError);
     
     app.use(morgan('combined'));
 
