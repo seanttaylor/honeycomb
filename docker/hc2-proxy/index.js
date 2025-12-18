@@ -3,18 +3,57 @@ import http from 'http';
 import morgan from 'morgan';
 import Nano from 'nano'
 
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import figlet from 'figlet';
+import crypo from 'node:crypto';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+import { HC2ServiceManifest } from './interfaces.js';
+
+
+/**
+ * Houses configuration and routing data for running services; published by the HC2 instance.
+ * Each key is a service name. The value is an array of service profiles representing
+ * active instances of that service.
+ * @type {Object.<string, Array<HC2ServiceManifest>>}
+ */
+const serviceProfiles = {};
+
+
+/** 
+ * @typedef {Object} CouchDBChangeFeedObject
+ * @property {String} seq - a string indicating the sequence of the change in the feed
+ * @property {String} id - uuid for the CouchDB document
+ * @property {Boolean} [deleted] - indicates whether the change in question is a deletion
+ * @property {Object[]} changes - revision metadata about the document from CouchDB
+ * @property {Object} doc - the CouchDB document that changed (i.e. a service registration receipt) 
+*/
 
 /**
  * Listens for documment updates to the database at {COUCH_DB_NAME}
- * @param {Object} change - the change object emitted by CouchDB
+ * @param {CouchDBChangeFeedObject} changeFeedObj - the change object emitted by CouchDB
  * @returns {void}
  */
-function onRegistrationUpdate(change) {
-  console.log(change);
-  // TODO: Extract the relevant data for service profiles
-  // TODO: Persist the service profiles in a local store
+function onRegistrationUpdate(changeFeedObj) {
+  try {
+    console.log(changeFeedObj);
+
+    if (changeFeedObj.deleted) {
+      return;
+    }
+
+    const { claims: serviceClaims, receipt } = changeFeedObj.doc;
+    if (!serviceProfiles[serviceClaims.name]) {
+      serviceProfiles[serviceClaims.name] = [];
+    }
+    
+    serviceProfiles[serviceClaims.name].push({ 
+      id: crypto.randomUUID(),
+      registrationReceiptId: receipt.id,
+      createdAt: new Date().toISOString(), 
+      ...serviceClaims, 
+    });
+  } catch (ex) {
+    console.error(`INTERNAL_ERROR (HC2.Proxy): **EXCEPTION ENCOUNTERED** during service profile updates. See details -> ${ex.message}`);
+  }
 };
 
 /**
@@ -62,41 +101,8 @@ function onCouchDBError(error) {
     app.get('/api/v1/profiles', async(req, res, next) => {
       try {
         res.set('X-Count', 1);
-        res.set('X-HC2-Resource', 'urn:hcp:hc2:service-profile:4173dbd4-fcf8-4768-8b87-a8e2a2b2f24f');
-        res.status(200).json([{
-          serviceId: '4173dbd4-fcf8-4768-8b87-a8e2a2b2f24f',
-          name: 'NOOPService',
-          version: '0.0.1',
-          dependsOn: [
-            'CacheService'
-          ],
-          api: {
-            description: 'This service is just used as a sanity check to ensure the module system is working',
-            methods: [
-              {
-                name: 'hello',
-                params: {
-                  type: 'object',
-                  properties: {
-                    receiver: {
-                      type: 'string'
-                    },
-                    sender: {
-                      type: 'string'
-                    }
-                  },
-                  required: [
-                    'receiver'
-                  ],
-                  additionalProperties: false
-                }
-              }
-            ]
-          },
-          serviceAlias: 'strong-jackal',
-          callbackURL: 'http://noop_service:3001/rpc',
-          createdAt: '2025-12-16T19:18:53.196Z'  
-        }]);
+        res.set('X-HC2-Resource', 'urn:hcp:hc2:service-profile');
+        res.status(200).json(Object.values(serviceProfiles).flat());
       } catch(ex) {
         console.error(`INTERNAL_ERROR (honeycomb.HC2.proxy): **EXCEPTION ENCOUNTERED** while fetching service profiles. See details -> ${ex.message}`);
         next(ex);
@@ -123,6 +129,7 @@ function onCouchDBError(error) {
       console.log(banner);
       console.log(`HC2Proxy serving instance (${HC2_INSTANCE_ID}) listening on port ${PORT} as alias (${SERVICE_INSTANCE_NAME})`);
       console.log(`HC2Proxy connected to HC2 instance datastore (${dbInfo.db_name}) at ${ new Date().toISOString() }`);
+      // TODO: Service has rebuild store of profiles on start
     });
               
   } catch(ex) {

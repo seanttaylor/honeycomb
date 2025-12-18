@@ -1,8 +1,7 @@
 import { JsonRpcClient } from './rpc-client.js';
+import { HC2Result, HC2ResultSource, HC2ErrorCode, HC2ServiceRegistration } from './interfaces.js';
 
 /**
- * HC2Result
- *
  * Canonical result wrapper for all hc2.my.* method invocations.
  * This constructor normalizes raw method outputs, errors, or exceptions
  * into the invariant HC2Result interface expected by SDK consumers.
@@ -10,11 +9,11 @@ import { JsonRpcClient } from './rpc-client.js';
 class HC2Result {
   /**
    * @param {Object} options
-   * @param {String} options.service - Target service name
-   * @param {String} options.method - Target method name
-   * @param {'sdk'|'proxy'|'service'} options.source - Originating layer
-   * @param {Object} [options.data] - Successful return value
-   * @param {Object} [options.error] - Error descriptor (if any)
+   * @param {String} options.service - target service name
+   * @param {String} options.method - target method name
+   * @param {'sdk'|'proxy'|'service'} options.source - originating layer
+   * @param {Object} [options.data] - successful return value
+   * @param {Object} [options.error] - error descriptor (if any)
    */
   constructor({ service, method, source, data, error }) {
     const hasError = Boolean(error);
@@ -43,8 +42,7 @@ class HC2Result {
   }
 
   /**
-   * Factory helper for successful results.
-   *
+   * Factory helper for successful results
    * @param {Object} args
    * @param {String} args.service
    * @param {String} args.method
@@ -62,8 +60,7 @@ class HC2Result {
   }
 
   /**
-   * Factory helper for error results.
-   *
+   * Factory helper for error results
    * @param {Object} args
    * @param {String} args.service
    * @param {String} args.method
@@ -85,10 +82,9 @@ class HC2Result {
   }
 
   /**
-   * Adapts an exception or unknown failure into a safe HC2Result.
+   * Adapts an exception or unknown failure into a safe {@link HC2Result}
    * This method must be used inside catch blocks to guarantee
    * the SDK never throws.
-   *
    * @param {Object} args
    * @param {String} args.service
    * @param {String} args.method
@@ -112,196 +108,7 @@ class HC2Result {
 }
 
 
-/**
- *
- * Enumerates the possible origins of an {@link HC2Result}. This value appears in
- * the `__metadata.source` field and indicates **which layer of the HC2 system**
- * produced the result or error.
- *
- * This field is intended strictly for diagnostics, logging, and observability.
- * Consumers must not rely on it for control flow or business logic.
- *
- * @readonly
- * @enum {String}
- */
-export const HC2ResultSource = {
-  /**
-   * SDK-level source.
-   *
-   * Indicates the result was produced entirely within the HC2Proxy SDK, prior to
-   * any network or RPC interaction. Common causes include missing routing data,
-   * invalid method access, or internal SDK errors.
-   */
-  SDK: 'sdk',
 
-  /**
-   * Proxy / transport-level source.
-   *
-   * Indicates the SDK successfully resolved routing information and attempted
-   * to contact the target service, but the failure occurred during transport,
-   * routing, or RPC execution (e.g. service unavailable or timeout).
-   */
-  PROXY: 'proxy',
-
-  /**
-   * Service-level source.
-   *
-   * Indicates the request was successfully delivered to the target service and
-   * the result (success or error) was produced by the service itself.
-   */
-  SERVICE: 'service',
-};
-
-/**
- * Canonical return envelope for **all** calls made through the `hc2.my.*` namespace.
- * This interface is *invariant*: every proxy call returns this shape regardless of
- * success, failure, routing state, or service availability. The SDK never throws;
- * all error conditions are represented as data.
- *
- * @typedef {Object} HC2Result
- *
- * @property {Object} __metadata
- * A sealed, read-only object containing diagnostic and contextual information
- * about the proxy invocation. This data is intended for logging, tracing, and
- * debugging purposes only and must not be used for control flow.
- *
- * @property {String} __metadata.service
- * The name of the target service being invoked.
- *
- * @property {String} __metadata.method
- * The name of the service method being invoked.
- *
- * @property {'sdk'|'proxy'|'service'} __metadata.source
- * Indicates where the result was produced. `sdk` implies the call failed before
- * leaving the SDK (e.g. missing routing data). `proxy` indicates a failure during
- * routing or transport. `service` indicates the target service executed and
- * returned the result.
- *
- * @property {String} __metadata.timestamp
- * An ISO-8601 timestamp indicating when the result was produced.
- *
- * @property {Object|null} data
- * The successful return value of the service method. This will be an object when
- * `hasError` is `false` and **must be `null` when `hasError` is `true`**.
- *
- * @property {Boolean} hasError
- * Indicates whether the proxy call resulted in an error. This value is authoritative
- * and must be checked before accessing `data`.
- *
- * @property {Object|null} error
- * Detailed error information when `hasError` is `true`. This value is **always `null`
- * on success**.
- *
- * @property {String} error.code
- * A stable, machine-readable error code identifying the failure condition
- * (e.g. `HC2_ROUTE_NOT_FOUND`, `HC2_SERVICE_UNAVAILABLE`). Error codes are drawn
- * from a closed, SDK-defined set.
- *
- * @property {String} error.title
- * A short, human-readable summary of the error condition.
- *
- * @property {'sdk'|'proxy'|'service'} error.source
- * Indicates which layer produced the error.
- *
- * @property {Boolean} [error.retryable]
- * Indicates whether retrying the operation may succeed at a later time
- * (e.g. service not yet available during startup).
- */
-
-
-/**
- * HC2ErrorCode
- *
- * Enumerates all stable, SDK-defined error codes that may appear in the
- * `error.code` field of an {@link HC2Result}. This is a **closed set**: consumers
- * should not assume the presence of any error codes outside those defined here.
- *
- * Error codes are grouped by the layer responsible for producing the error:
- * SDK, Proxy / Network, or Service.
- *
- * @readonly
- * @enum {String}
- */
-export const HC2ErrorCode = {
-  /**
-   * SDK-level error.
-   *
-   * The SDK has no routing or metadata information for the requested service.
-   * This typically indicates that the service has not yet been registered with
-   * the HC2 instance or that routing metadata has not yet propagated into the SDK.
-   */
-  HC2_ROUTE_NOT_FOUND: 'HC2_ROUTE_NOT_FOUND',
-
-  /**
-   * SDK-level error.
-   *
-   * The requested method does not exist in the service’s published API schema.
-   * This error is detected locally by the SDK before any RPC call is made.
-   */
-  HC2_METHOD_NOT_FOUND: 'HC2_METHOD_NOT_FOUND',
-
-  /**
-   * SDK-level error.
-   *
-   * An unexpected exception or invariant violation occurred within the SDK
-   * itself. This indicates a bug in the HC2Proxy SDK implementation rather than
-   * a user or service error.
-   */
-  HC2_SDK_INTERNAL_ERROR: 'HC2_SDK_INTERNAL_ERROR',
-
-  /**
-   * Proxy / network-level error.
-   *
-   * The target service is known and registered, but its RPC endpoint is not
-   * reachable. This commonly occurs during service startup or restart windows.
-   */
-  HC2_SERVICE_UNAVAILABLE: 'HC2_SERVICE_UNAVAILABLE',
-
-  /**
-   * Proxy / network-level error.
-   *
-   * The RPC call to the target service exceeded the configured timeout before
-   * a response was received.
-   */
-  HC2_RPC_TIMEOUT: 'HC2_RPC_TIMEOUT',
-
-  /**
-   * Proxy / network-level error.
-   *
-   * The target service returned a malformed response or an error that could not
-   * be safely interpreted by the proxy or SDK.
-   */
-  HC2_RPC_ERROR: 'HC2_RPC_ERROR',
-
-  /**
-   * Service-level error (passthrough).
-   *
-   * The parameters supplied to the service method failed schema validation
-   * according to the service’s declared API contract.
-   */
-  HC2_INVALID_PARAMS: 'HC2_INVALID_PARAMS',
-
-  /**
-   * Service-level error (passthrough).
-   *
-   * The target service executed the method but threw an exception or explicitly
-   * returned an error condition.
-   */
-  HC2_SERVICE_ERROR: 'HC2_SERVICE_ERROR',
-};
-
-/**
- * @typedef {Object} HC2ServiceRegistration
- * @property {String} app - the high-level application this service is part of
- * @property {String} serviceName - the service name peer application services will use to access this service's APIs
- * @property {Number} version - the version number of the service
- * @property {Object} api the public API of the service
- * @property {Object[]} api.methods - List of methods defined on the service
- * @property {String} api.methods[].name - Method name
- * @property {Object} api.methods[].params - key/value pairs, maybe even a JSON Schema?
- * @property {String} callbackURL - URL the application service can be contacted for RPC calls
- * @property {String} HC2ServiceCertificate - the certificate signed by the HC2 instance the proxy will connect to
- */
 
 /**
  *
@@ -476,50 +283,48 @@ export class HC2Proxy {
     );
 
     try {
-        const certId = HC2ServiceCertificate.payload.metadata.certificateId;
-        if (!HC2ServiceCertificate) {
-          throw Error('Could not parse service certificate. It may be **undefined**')
+      const certId = HC2ServiceCertificate.payload.metadata.certificateId;
+      if (!HC2ServiceCertificate) {
+        throw Error('Could not parse service certificate. It may be **undefined**')
+      }
+
+      const certVerificationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/certs/${certId}/verify`, {
+        method: 'POST',
+        body: JSON.stringify(HC2ServiceCertificate),
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'super-secret-credential'
         }
+      });
 
-        // TODO: validate registration object
-        // certificate response
-        const certVerificationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/certs/${certId}/verify`, {
-            method: 'POST',
-            body: JSON.stringify(HC2ServiceCertificate),
-            headers: {
-              'content-type': 'application/json',
-              authorization: 'super-secret-credential'
-            }
-        });
+      if (certVerificationReq.status >= 400) {
+        const response = await certVerificationReq.json();
+        console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${certVerificationReq.status}). See details -> ${response.title}`);
+        return {};
+      }
 
-        if (certVerificationReq.status >= 400) {
-          const response = await certVerificationReq.json();
-          console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${certVerificationReq.status}). See details -> ${response.title}`);
-          return {};
+      if (certVerificationReq.status >= 204) {
+        console.info(`HC2 service certificate verified for service (${service.name})`);
+      }
+
+      const serviceRegistrationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/services`, {
+        method: 'POST',
+        body: JSON.stringify(reg),
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'super-secret-credential'
         }
+      });
 
-        if (certVerificationReq.status >= 204) {
-          console.info(`HC2 service certificate verified for service (${service.name})`);
-        }
+      if (serviceRegistrationReq.status >= 400) {
+        const response = serviceRegistrationReq.json();
+        console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${serviceRegistrationReq.status}). See details -> ${response.title}`);
+        return {};
+      }
 
-        const serviceRegistrationReq = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/services`, {
-          method: 'POST',
-          body: JSON.stringify(reg),
-          headers: {
-            'content-type': 'application/json',
-            authorization: 'super-secret-credential'
-          }
-        });
-
-        if (serviceRegistrationReq.status >= 400) {
-          const response = serviceRegistrationReq.json();
-          console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Service registration failed with status code (${serviceRegistrationReq.status}). See details -> ${response.title}`);
-          return {};
-        }
-
-        const response = await serviceRegistrationReq.json();
-        console.info(`HC2 service registration completed successfully on instance (${response.hc2InstanceId}) with service id (${response.serviceId}) and service alias (${response.alias})`);
-        return response;
+      const response = await serviceRegistrationReq.json();
+      console.info(`HC2 service registration completed successfully on instance (${response.hc2InstanceId}) with service id (${response.serviceId}) and service alias (${response.alias})`);
+      return response;
     } catch (ex) {
       console.error(
         `INTERNAL_ERROR (honeycomb.HC2.Proxy): **EXCEPTION ENCOUNTERED** during service registration with HC2 instance (${

@@ -108,8 +108,6 @@ export class HC2Proxy {
         serviceShortName: RandomNameGenerator.get(1).replaceAll(' ', '-'),
       };
 
-      // TODO: Create service registration record
-
       return registrationReceipt;
     } catch (ex) {
       console.error(
