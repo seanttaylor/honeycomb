@@ -1,5 +1,5 @@
 import { JsonRpcClient } from './rpc-client.js';
-import { HC2Result, HC2ResultSource, HC2ErrorCode, HC2ServiceRegistration } from './interfaces.js';
+import { IHC2Result, HC2ResultSource, HC2ErrorCode, HC2ServiceRegistration } from './interfaces.js';
 
 /**
  * Canonical result wrapper for all hc2.my.* method invocations.
@@ -14,6 +14,7 @@ class HC2Result {
    * @param {'sdk'|'proxy'|'service'} options.source - originating layer
    * @param {Object} [options.data] - successful return value
    * @param {Object} [options.error] - error descriptor (if any)
+   * @returns {IHC2Result}
    */
   constructor({ service, method, source, data, error }) {
     const hasError = Boolean(error);
@@ -107,23 +108,16 @@ class HC2Result {
   }
 }
 
-
-
-
 /**
  *
  */
 class ServiceProxy {
-  #client;
 
   /**
    * @param {String} serviceName
-   * @param {Object} api
-   * @param {Object[]} api.methods
-   * @param {String} api.callbackURL
-   * @param {Object} rpcClient
+   * @param {Object[]} instances - a list of service profile objects
    */
-  constructor(serviceName, api, rpcClient) {
+  constructor(serviceName, serviceSchema) {
     const EXCLUDED_BUILTIN_METHODS = new Set([
       'toJSON',
       'toString',
@@ -131,6 +125,8 @@ class ServiceProxy {
       'inspect',
       'constructor',
     ]);
+    const rpcClient = new JsonRpcClient();
+    console.log({serviceName, api: serviceSchema.instances });
 
     return new Proxy(
       {},
@@ -144,24 +140,89 @@ class ServiceProxy {
             return Reflect.get(target, methodName);
           }
 
-          const schema = api.methods.find((el, idx) => {
-            return methodName === el.name;
-          });
+          const methodExists = new Set(serviceSchema.api.interface).has(methodName);
 
-          if (!schema) {
+          if (!methodExists) {
             console.error(
-              `INTERNAL_ERROR (honeycomb.HC2.Proxy): Could not forward method call (${serviceName}.${methodName}) to the application service. No schema was identified for this method. See docs.`
+              `INTERNAL_ERROR (honeycomb.HC2.Proxy): Could not forward method call (${serviceName}.${methodName}) to the application service. No interface was identified for this method. See docs.`
             );
             return;
           }
+
+          const methodSchema = serviceSchema.api.methods.find((el) => {
+            return methodName = el.name;
+          });
+
           // When the method is invoked, send an RPC call.
           return async function (params = {}) {
             //TODO: Ensure any functions that are called with positional arguments are converted to an object
+            
             try {
-              return await rpcClient.call(
-                `${serviceName}.${methodName}`,
-                params
-              );
+              const instances = serviceSchema.instances ?? [];
+
+              if (instances.length === 0) {
+                return HC2Result.error({
+                  service: serviceName,
+                  method: methodName,
+                  error: {
+                    code: HC2ErrorCode.HC2_ROUTE_NOT_FOUND,
+                    message: `No instances available for service (${serviceName})`,
+                    retryable: true,
+                  },
+                });
+              }
+
+              for (const instance of instances) {
+                try { 
+                  const result = await rpcClient.call(
+                    {
+                      endpoint: instance.rpcEndpoint,
+                      method: `${serviceName}.${methodName}`,
+                      params,
+                    }
+                  );
+
+                  return HC2Result.success({
+                    service: `${serviceName}@${instance.rpcEndpoint}`,
+                    method: methodName,
+                    source: HC2ResultSource.SERVICE,
+                    data: result,
+                  });
+
+                } catch (ex) {
+                // If the method is not retryable, fail immediately
+                if (!methodSchema.retryable) {
+                  console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): **EXCEPTION ENCOUNTERED** while executing service method (${serviceName}.${methodName}). This API **DOES NOT** allow retries. See details -> ${ex.message} `);
+                  return HC2Result.error({
+                    service: serviceName,
+                    method: methodName,
+                    error: ex.message,
+                  });
+                }
+
+                // Optional Retry-After advisory waiting period
+                if (ex?.retryAfter) {
+                  await new Promise(r =>
+                    setTimeout(r, ex.retryAfter)
+                  );
+                }
+
+                // Otherwise: try next instance
+                continue;
+                }
+
+              }
+
+              // All instances exhausted
+              return HC2Result.error({
+                service: serviceName,
+                method: methodName,
+                error: {
+                  code: HC2ErrorCode.HC2_ALL_INSTANCES_FAILED,
+                  message: 'All service instances failed',
+                  retryable: true,
+                },
+              });
             } catch (ex) {
               console.error(
                 `INTERNAL_ERROR (honeycomb.HC2.Proxy): **EXCEPTION ENCOUNTERED** while forwarding method call (${serviceName}.${methodName}). See details -> ${ex.message}`
@@ -175,22 +236,22 @@ class ServiceProxy {
 }
 
 export class HC2Proxy {
-  app;
-  my;
-  #rpcClient;
+  #lastSync;
+  #readyPromise;
+  #status;
+  #EXCLUDED_BUILTIN_METHODS;
   #HC2_INSTANCE_URL;
   #HC2_INSTANCE_ID;
-  // cached routing data from the HC2 instance
-  #INTERNAL_ROUTE_TABLE = new Map();
-  #EXCLUDED_BUILTIN_METHODS;
-  services = new Set();
+  app;
+  my;
+  #ROUTE_TABLE = new Map();
+  #services = new Set();
 
   /**
    * @param {String} HC2_INSTANCE_URL - URL of the HC2 instance to connect to
    * @param {String} app - the application the proxy is associated with
    */
   constructor(HC2_INSTANCE_URL, app) {
-    this.#rpcClient = new JsonRpcClient();
     const EXCLUDED_BUILTIN_METHODS = new Set([
       'toJSON',
       'toString',
@@ -198,9 +259,8 @@ export class HC2Proxy {
       'inspect',
       'constructor',
     ]);
-
     const ctx = this;
-
+    
     this.#HC2_INSTANCE_URL = HC2_INSTANCE_URL;
     this.#EXCLUDED_BUILTIN_METHODS = EXCLUDED_BUILTIN_METHODS;
     this.app = app;
@@ -225,11 +285,10 @@ export class HC2Proxy {
 
             if (ctx.services.has(serviceNameOrProp)) {
               // create a service proxy **on demand**
-              const schema = ctx.#INTERNAL_ROUTE_TABLE.get(serviceNameOrProp);
+              const schema = ctx.#ROUTE_TABLE.get(serviceNameOrProp);
               return new ServiceProxy(
                 serviceNameOrProp,
-                schema,
-                ctx.#rpcClient
+                schema
               );
             }
 
@@ -261,8 +320,109 @@ export class HC2Proxy {
     );
   }
 
+  get lastSync() {
+    return this.#lastSync;
+  }
   get services() {
-    return this.services;
+    return this.#services;
+  }
+
+  /**
+   * Fetches and/or syncs service profiles from the HC2Proxy
+   * This method **SHOULD** be awaited before any service calls are made to ensure
+   * the proxy has knowledge of available services. If the proxy does not have service profile data calls to service methods via the SDK **may** fail
+   * Subsequent calls of this method are idempotent and return the latest sync state.
+   * @returns {Promise<{
+   *   readyAt: string,
+   *   services: string[]
+   * }>}
+   */
+  async ready() {
+    // If a profile sync is already in progress or completed, reuse it
+    if (this.#readyPromise) {
+      return this.#readyPromise;
+    }
+
+    this.#readyPromise = (async () => {
+      try {
+
+        const response = await fetch(`${this.#HC2_INSTANCE_URL}/api/v1/profiles`, {
+          headers: {
+            'content-type': 'application/json',
+            authorization: 'super-secret-credential',
+          },
+        });
+
+        if (!response.ok) {
+          console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): Could not fetch service profiles. Service profile sync failed with status code (${response.status}). See details -> ${response.statusText}`);
+          this.#status = 'status.stale';
+          return Object.assign(this.#lastSync, { status: this.#status });
+        }
+
+        const profiles = await response.json();
+
+        // Reset local routing state on sync
+        this.#ROUTE_TABLE.clear();
+        this.#services.clear();
+
+        for (const profile of profiles) {
+          const existingRouteEntry = this.#ROUTE_TABLE.get(profile.name);
+          const {
+            createdAt,
+            id,
+            network,
+            registrationReceiptId,
+            serviceId,
+            urn,
+            ...serviceDefinition
+          } = profile;
+
+          // First time seeing this service
+          if (!existingRouteEntry) {
+            this.#ROUTE_TABLE.set(profile.name, {
+               ...serviceDefinition,
+              instances: [
+                {
+                  createdAt,
+                  id,
+                  registrationReceiptId,
+                  serviceId,
+                  urn,
+                  rpcEndpoint: network.rpcEndpoint
+                }
+              ]
+            });
+          } else {
+            // Service already exists — just add a new instance
+            existingRouteEntry.instances.push({
+              id,
+              registrationReceiptId,
+              createdAt,
+              urn,
+              rpcEndpoint: network.rpcEndpoint
+            });
+          }
+
+          this.#services.add(profile.name);
+        }
+
+        this.#status = 'status.fresh';
+
+        const info = {
+          readyAt: new Date().toISOString(),
+          services: Array.from(this.#services),
+          status: this.#status
+        };
+
+        this.#lastSync = info;
+        return info;
+      } catch(ex) {
+        console.error(`INTERNAL_ERROR (honeycomb.HC2.Proxy): **EXCEPTION ENCOUNTERED** while fetching service profiles. Route table state as of (${new Date().toISOString()}). See details -> ${ex.message}`);
+        this.#status = 'status.stale';
+      }
+    })();
+
+    return this.#readyPromise;
   }
 
   /**

@@ -40,15 +40,18 @@ function onRegistrationUpdate(changeFeedObj) {
       return;
     }
 
+    const profileId = crypto.randomUUID();
     const { claims: serviceClaims, receipt } = changeFeedObj.doc;
     if (!serviceProfiles[serviceClaims.name]) {
       serviceProfiles[serviceClaims.name] = [];
     }
     
     serviceProfiles[serviceClaims.name].push({ 
-      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      id: profileId,
       registrationReceiptId: receipt.id,
-      createdAt: new Date().toISOString(), 
+      serviceId: receipt.serviceId,
+      urn: `urn:hcp:hc2:service-profile:${profileId}`,
       ...serviceClaims, 
     });
   } catch (ex) {

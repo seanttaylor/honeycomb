@@ -63,57 +63,60 @@ async function signPayload(payload, privateKey) {
     const HC2_SERVICE_CERTIFICATE = process.env.HC2_SERVICE_CERTIFICATE;
     
     try {
-        const banner = await figlet.text(`${SERVICE_NAME} v${VERSION}`);
-        console.log(banner);
+      const banner = await figlet.text(`${SERVICE_NAME} v${VERSION}`);
+      console.log(banner);
 
-        const { publicKey: PUBLIC_KEY, privateKey: PRIVATE_KEY } = await generateKeyPair();
-        const serviceRegistrationRequest = {
-            app: 'scoop.ly',
-            service: {
-                name: 'FOHService',
-                version: '0.0.1',
-                dependsOn: ['CacheService'],
-                ports: [3001],
-                api: {
-                    description:
-                    'This service is just used as a sanity check to ensure the module system is working',
-                    methods: [
-                    {
-                        name: 'hello',
-                        params: {
-                        type: 'object',
-                        properties: {
-                            receiver: {
-                            type: 'string',
-                            },
-                            sender: {
-                            type: 'string',
-                            },
-                        },
-                        required: ['receiver'],
-                        additionalProperties: false,
-                        },
-                    },
-                    ],
-                },
-                network: {
-                    internalOnly: false,
-                    publicHostName: 'foh',
-                    rpcEndpoint: 'http://foh_service:3001/rpc',
-                },
-            },
-            HC2ServiceCertificate: HC2_SERVICE_CERTIFICATE
-        };
-        const SERVICE_SIGNED_REGISTRATION_REQ = await signPayload(serviceRegistrationRequest, PRIVATE_KEY);
+      const { publicKey: PUBLIC_KEY, privateKey: PRIVATE_KEY } = await generateKeyPair();
+      const serviceRegistrationRequest = {
+          app: 'scoop.ly',
+          service: {
+              name: 'FOHService',
+              version: '0.0.1',
+              dependsOn: ['CacheService'],
+              ports: [3001],
+              api: {
+                  description:
+                  'This service is just used as a sanity check to ensure the module system is working',
+                  methods: [
+                  {
+                      name: 'hello',
+                      params: {
+                      type: 'object',
+                      properties: {
+                          receiver: {
+                          type: 'string',
+                          },
+                          sender: {
+                          type: 'string',
+                          },
+                      },
+                      required: ['receiver'],
+                      additionalProperties: false,
+                      },
+                  },
+                  ],
+              },
+              network: {
+                  internalOnly: false,
+                  publicHostName: 'foh',
+                  rpcEndpoint: 'http://foh_service:3001/rpc',
+              },
+          },
+          HC2ServiceCertificate: HC2_SERVICE_CERTIFICATE
+      };
+      const SERVICE_SIGNED_REGISTRATION_REQ = await signPayload(serviceRegistrationRequest, PRIVATE_KEY);
 
-        console.info(`${SERVICE_NAME} v${VERSION}`);
-        
-        const hc2 = new HC2Proxy(HC2_INSTANCE_URL);
-        const fohService = new FOHService(hc2);
-        const hc2ServiceRegistrationReceipt = await hc2.register(SERVICE_SIGNED_REGISTRATION_REQ);
+      console.info(`${SERVICE_NAME} v${VERSION}`);
+      
+      const hc2 = new HC2Proxy(HC2_INSTANCE_URL);
+      const fohService = new FOHService(hc2);
+      const info = await hc2.ready();
+      console.log({ info });
 
-        const reply = await hc2.my.NOOPService.hello({ from: SERVICE_NAME });
-        console.log({reply})
+      const hc2ServiceRegistrationReceipt = await hc2.register(SERVICE_SIGNED_REGISTRATION_REQ);
+
+      const reply = await hc2.my.NOOPService.hello({ receiver: SERVICE_NAME });
+      console.log({reply})
 
         /******** HTTP SERVER ********/
         const app = express();
@@ -125,47 +128,51 @@ async function signPayload(payload, privateKey) {
             res.status(200).json(serviceStatus);
         });
 
-        app.post('/rpc', async (req, res) => {
-            try {
-                const ajv = new Ajv();
-                const { name, params: methodParams } = req.body;
-                const schema = serviceRegistrationRequest.api.methods.find((el, idx) => {
-                    return el.name === name;
-                });
+        app.post('/rpc', async (req, res, next) => {
+          try {
+            const ajv = new Ajv();
+            const { method, params: methodParams } = req.body;
+            const [serviceName, methodName] = method.split('.');
+            const schema = serviceRegistrationRequest.service.api.methods.find((el, idx) => {
+              return el.name === methodName;
+            });
 
-                if (!schema) {
-                    console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Service method (${name})`);
-                    res.set('content-type', 'application/problem+json');
-                    res.status(404).json({
-                        type: 'https://hc2.io/probs/invalid-service-method',
-                        title: `The service method specified does not exist on target service`,
-                        instance: `/requests/${crypto.randomUUID()}`,
-                    });
-                    return;
-                }
-
-                const validation = ajv.validate(schema.params, methodParams);
-
-                if (!validation) {
-                    console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Invalid params for service method (${schema.name})`);
-                    res.set('content-type', 'application/problem+json');
-                    res.status(404).json({
-                        type: 'https://hc2.io/probs/invalid-service-method',
-                        title: `The service method specified does not exist on ${SERVICE_NAME}`,
-                        detail: `${JSON.stringify(validation.errors)}`,
-                        instance: `/requests/${crypto.randomUUID()}`,
-                    });
-                    return;
-                }
-
-                const response = await fohService[name](methodParams);
-                res.status(200).json({
-                    message: response
-                });
-            } catch(ex) {
-                console.error(`INTERNAL_ERROR (FeedService): **EXCEPTION ENCOUNTERED** while executing service method. See details -> ${ex.message}`);
-                next(ex);
+            if (!schema) {
+              console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Service method (${methodName}) could not be found on the service schema`);
+              res.set('content-type', 'application/problem+json');
+              res.status(404).json({
+                type: 'https://hc2.io/probs/invalid-service-method',
+                title: `The service method specified does not exist on target service`,
+                instance: `/requests/${crypto.randomUUID()}`,
+              });
+              return;
             }
+
+              const validation = ajv.validate(schema.params, methodParams);
+
+              if (!validation) {
+                  console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Invalid params for service method (${schema.name})`);
+
+                  console.log(ajv.errors);
+
+                  res.set('content-type', 'application/problem+json');
+                  res.status(400).json({
+                      type: 'https://hc2.io/probs/invalid-service-method',
+                      title: `The service method specified does not exist on ${SERVICE_NAME}`,
+                      detail: `${JSON.stringify(ajv.errors)}`,
+                      instance: `/requests/${crypto.randomUUID()}`,
+                  });
+                  return;
+              }
+
+              const response = await fohService[methodName](methodParams);
+              res.status(200).json({
+                  message: response
+              });
+          } catch(ex) {
+            console.error(`INTERNAL_ERROR (FeedService): **EXCEPTION ENCOUNTERED** while executing service method. See details -> ${ex.message}`);
+            next(ex);
+          }
         });
 
         app.use((err, req, res, next) => {

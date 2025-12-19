@@ -109,10 +109,11 @@ async function signPayload(payload, privateKey) {
     
     const hc2 = new HC2Proxy(HC2_INSTANCE_URL);
     const noopService = new NOOPService(hc2);
+    const info = await hc2.ready();
+    console.log({ info });
     const hc2ServiceRegistrationReceipt = await hc2.register(SERVICE_SIGNED_REGISTRATION_REQ);
-
-    const reply = await hc2.my.FOHService.hello({ from: SERVICE_NAME });
-    console.log({reply});
+    const reply = await hc2.my.FOHService.hello({ receiver: SERVICE_NAME });
+    console.log({ reply });
 
     /******** HTTP SERVER ********/
     const app = express();
@@ -124,16 +125,18 @@ async function signPayload(payload, privateKey) {
       res.status(200).json(serviceStatus);
     });
 
-    app.post('/rpc', async (req, res) => {
+    app.post('/rpc', async (req, res, next) => {
       try {
         const ajv = new Ajv();
-        const { name, params: methodParams } = req.body;
-        const schema = serviceRegistrationRequest.api.methods.find((el, idx) => {
-          return el.name === name;
+        const { method, params: methodParams } = req.body;
+        const [serviceName, methodName] = method.split('.');
+
+        const schema = serviceRegistrationRequest.service.api.methods.find((el, idx) => {
+          return el.name === methodName;
         });
 
         if (!schema) {
-          console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Service method (${name})`);
+          console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Service method (${methodName}) could not be found on the service schema`);
           res.set('content-type', 'application/problem+json');
           res.status(404).json({
             type: 'https://hc2.io/probs/invalid-service-method',
@@ -147,17 +150,21 @@ async function signPayload(payload, privateKey) {
 
         if (!validation) {
           console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Invalid params for service method (${schema.name})`);
+          
+          console.log(ajv.errors)
+
+
           res.set('content-type', 'application/problem+json');
-          res.status(404).json({
+          res.status(400).json({
             type: 'https://hc2.io/probs/invalid-service-method',
             title: `The service method specified does not exist on ${SERVICE_NAME}`,
-            detail: `${JSON.stringify(validation.errors)}`,
+            detail: `${JSON.stringify(ajv.errors)}`,
             instance: `/requests/${crypto.randomUUID()}`,
           });
           return;
         }
 
-        const response = await noopService[name](methodParams);
+        const response = await noopService[methodName](methodParams);
         res.status(200).json({
           message: response
         });

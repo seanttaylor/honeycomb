@@ -1,30 +1,20 @@
 export class JsonRpcClient {
-    #URL;
-    #token;
     #idCounter;
-  
-    /**
-     * @param {Object} options
-     * @param {String} options.URL
-     * @param {String} options.token
-     * @param {Boolean} options.reconnect
-     *
-     */
-    constructor({
-      URL = 'https://httpbin.io/anything',
-      token = 'SXQgd2FzIHRoZSBiZXN0IG9mIHRpbWVzLCBpdCB3YXMgdGhlIHdvcnN0IG9mIHRpbWVz',
-      reconnect = false,
-    } = {}) {
-      this.#URL = URL;
-      this.#token = token;
+
+    constructor() {
       this.#idCounter = 0;
     }
   
+      
     /**
-     * @param {String} method - the service method being called
-     * @param {Object} params - parameters required by the method called
+     * @param {Object} options
+     * @param {String} options.method
+     * @param {Object} options.params
+     * @param {String} options.endpoint
+     * @param {Boolean} options.rethrowExceptions
+     * @returns {Object}
      */
-    async call(method, params) {
+    async call({ method, params, endpoint, rethrowExceptions=true }) {
       try {
         const id = ++this.#idCounter;
         const body = {
@@ -34,11 +24,11 @@ export class JsonRpcClient {
           id,
         };
   
-        const response = await fetch(`${this.#URL}`, {
+        const response = await fetch(`${endpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.#token}`,
+            Authorization: 'super-secret-credential',
           },
           body: JSON.stringify(body),
         });
@@ -47,7 +37,6 @@ export class JsonRpcClient {
           console.error(
             `INTERNAL_ERROR (honeycomb.HC2): Method call (${method}) returned an HTTP error status (${response.status}). See details -> ${response.statusText} `
           );
-          return;
         }
   
         const json = await response.json();
@@ -59,11 +48,14 @@ export class JsonRpcClient {
           return;
         }
   
-        return json.data;
+        return json;
       } catch (ex) {
         console.error(
           `INTERNAL_ERROR (honeycomb.HC2): **EXCEPTION ENCOUNTERED** while forwarding method call (${method}). See details -> ${ex.message} `
         );
+        if (rethrowExceptions) {
+          throw new Error(ex.message);
+        }
       }
     }
   }

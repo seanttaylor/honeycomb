@@ -4,7 +4,7 @@
  * success, failure, routing state, or service availability. The SDK never throws;
  * all error conditions are represented as data.
  *
- * @typedef {Object} HC2Result
+ * @typedef {Object} IHC2Result
  *
  * @property {Object} __metadata
  * A sealed, read-only object containing diagnostic and contextual information
@@ -55,9 +55,9 @@
  */
 
 /**
- * @type {HC2Result}
+ * @type {IHC2Result}
  */
-export const HC2Result = Object.freeze({});
+export const IHC2Result = Object.freeze({});
 
 
 /**
