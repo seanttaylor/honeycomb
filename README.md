@@ -170,7 +170,7 @@ HCP ultimately runs on bare-metal infrastructure, currently centered around a Ra
 
 ---
 
-## HC2Gateway <a name="introduction"></a>
+## HC2Gateway <a name="hc2-gateway"></a>
 
 > Gist: HC2Gateway is the ingress, routing, and service exposure layer for an HC2 instance, controlling how traffic—internal and external—reaches running services.
 
