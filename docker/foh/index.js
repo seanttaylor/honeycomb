@@ -151,23 +151,23 @@ async function signPayload(payload, privateKey) {
               const validation = ajv.validate(schema.params, methodParams);
 
               if (!validation) {
-                  console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Invalid params for service method (${schema.name})`);
+                console.error(`INTERNAL_ERROR (${SERVICE_NAME}): Invalid params for service method (${schema.name})`);
 
-                  console.log(ajv.errors);
+                console.log(ajv.errors);
 
-                  res.set('content-type', 'application/problem+json');
-                  res.status(400).json({
-                      type: 'https://hc2.io/probs/invalid-service-method',
-                      title: `The service method specified does not exist on ${SERVICE_NAME}`,
-                      detail: `${JSON.stringify(ajv.errors)}`,
-                      instance: `/requests/${crypto.randomUUID()}`,
-                  });
-                  return;
+                res.set('content-type', 'application/problem+json');
+                res.status(400).json({
+                  type: 'https://hc2.io/probs/invalid-service-method',
+                  title: `The service method specified does not exist on ${SERVICE_NAME}`,
+                  detail: `${JSON.stringify(ajv.errors)}`,
+                  instance: `/requests/${crypto.randomUUID()}`,
+                });
+                return;
               }
 
               const response = await fohService[methodName](methodParams);
               res.status(200).json({
-                  message: response
+                message: response
               });
           } catch(ex) {
             console.error(`INTERNAL_ERROR (FeedService): **EXCEPTION ENCOUNTERED** while executing service method. See details -> ${ex.message}`);
