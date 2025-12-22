@@ -5,6 +5,9 @@
 1. [Introduction](#introduction)
 2. [HC2Gateway](#hc2-gateway)
 3. [HC2 Instances](#hc2-instances)
+   1. [HC2 Services In Depth](#hc2-services-in-depth)
+4. [HC2 SDK](#hc2-sdk)
+
 
 ## Introducing Honeycomb Cloud Platform <a name="introduction"></a>
 
@@ -71,7 +74,7 @@ HCP maintains a conceptual separation between control responsibilities (orchestr
 
 ### HC2 | Cloud Application Runtime
 
-#### Role of HC2 in the platform
+#### Role of HC2 in Honeycomb Cloud
 
 HC2 is the core runtime responsible for executing application services. It provides the environment in which services run and defines how they are started, managed, and observed.
 
@@ -162,8 +165,6 @@ HC0 hides unnecessary variability while still exposing meaningful hardware chara
 #### Why HCP treats hardware as a first-class concern
 
 By acknowledging hardware explicitly, HCP avoids the false assumption that all compute is interchangeable, leading to more predictable systems.
-
----
 
 ## Bare Metal Infrastructure
 
@@ -464,3 +465,173 @@ The most useful way to think about HC2 services is as **identity-bound workloads
 * The platform decides when a service “exists” from a system perspective.
 
 In practical terms, an HC2 service is not “live” when it starts—it is live when the HC2 instance says it is.
+
+## HC2 Services In-Depth <a name="hc2-services-in-depth"></a>
+
+### Purpose and Scope
+
+This section provides a deeper examination of how Honeycomb Cloud services are defined, authenticated, registered, and made discoverable at runtime. It focuses on the core artifacts and concepts that underpin service identity and communication without delving into lower-level implementation details.
+
+Honeycomb Cloud services are defined declaratively, authenticated cryptographically, registered through a gateway, and made discoverable via derived profiles. By strictly separating authored artifacts from derived operational state, the platform ensures clear ownership boundaries and predictable behavior.
+
+The concepts below describe how services participate in the platform while remaining fully decoupled from the underlying control plane.
+
+### Service Lifecycle Overview
+
+At a high level, a Honeycomb Cloud service progresses through the following conceptual stages:
+
+1. **Definition** – The service declares its identity and intent via a Service Manifest in its codebase.
+2. **Deployment Preparation** – During a deployment run, the HC2 Agent ("Bumblebee") consumes the manifest and prepares the assets required for the service to operate.
+3. **Identity Issuance** – Bumblebee requests a Service Certificate from a target HC2 instance and stores the resulting cryptographic material in HC3.
+4. **Registration** – When the service starts, it registers itself through HC2Gateway, presenting its certificate as proof of identity.
+5. **Operational Discovery** – Registration events are propagated via HC2 and used to derive Service Profiles inside HC2Gateway.
+6. **Runtime Operation** – The service communicates with other services exclusively through HC2Gateway, which brokers traffic using Service Profiles.
+
+Each stage produces or consumes one or more of the core artifacts described in the sections that follow.
+
+---
+
+### Service Manifests
+
+#### Definition and Role
+
+A **Service Manifest** is a JSON file located within a Honeycomb Cloud service’s codebase. It is a declarative description of the service that serves as the authoritative source of service identity and metadata.
+
+Service Manifests are not runtime configuration files. Instead, they describe *what the service is* and *how it should be represented* within the Honeycomb Cloud ecosystem.
+
+#### Contents
+
+While the exact schema may evolve, a Service Manifest typically includes:
+
+* Service name and logical identifier
+* Versioning information
+* Environment or deployment context
+* Declared API interfaces or capabilities
+* Metadata required to support certificate requests
+* Additional descriptive attributes used by the platform
+
+#### Usage
+
+Service Manifests are primarily consumed by the HC2 Agent (Bumblebee) during deployment runs. Bumblebee uses the manifest to:
+
+* Establish service identity
+* Construct certificate signing requests
+* Populate registration payloads
+* Seed metadata that will later inform Service Profiles
+
+> Developers author Service Manifests directly, but do not interact with them at runtime.
+
+### 4. Service Certificates
+
+#### Definition
+
+A **Service Certificate** is a cryptographic asset that represents the authenticated identity of a Honeycomb Cloud service. Certificates are issued by an HC2 instance in response to a certificate signing request (CSR).
+
+#### Creation Flow
+
+* During a deployment run, Bumblebee generates a CSR based on Service Manifest data.
+* Bumblebee submits the CSR to the target HC2 instance’s `/certs` endpoint.
+* The HC2 instance issues a signed Service Certificate.
+
+#### Storage and Injection
+
+* Issued certificates are stored securely in HC3.
+* At runtime, Bumblebee retrieves the appropriate certificate from HC3.
+* The certificate is injected into the service container when the service starts.
+
+#### Purpose
+
+Service Certificates serve multiple roles:
+
+* Establishing a verifiable service identity
+* Authenticating registration requests made via HC2Gateway
+* Providing a trust foundation for service-to-service communication
+
+Certificates are treated as identity artifacts, not configuration or policy objects.
+
+### 5. Service Registration Receipt
+
+#### Definition
+
+A **Service Registration Receipt** is the confirmation object returned upon successful registration of a Honeycomb Cloud service. It is issued in response to a service registration request made via HC2Gateway.
+
+#### Contents
+
+A registration receipt typically includes:
+
+* Confirmation that registration succeeded
+* Identifiers linking the receipt to the service identity
+* Timestamps and relevant versioning data
+* Normalized metadata derived during registration
+
+#### Role in Honeycomb Cloud
+
+The Service Registration Receipt acts as:
+
+* Proof that the service is recognized by the platform
+* An auditable record of service admission
+* A trigger for downstream propagation of service state into HC3
+
+Services may receive the receipt, but do not use it for discovery or routing decisions.
+
+### 6. Service Profiles
+
+#### Definition
+
+A **Service Profile** is a derived, runtime representation of a registered Honeycomb Cloud service. Service Profiles are created within HC2Gateway based on registration notifications propagated from HC2 instances.
+
+Unlike Service Manifests, Service Profiles are not authored by developers. They are synthesized artifacts that reflect the current operational state of a service.
+
+#### Data Captured
+
+Service Profiles typically capture:
+
+* API interfaces and exposed methods
+* Networking and routing information
+* Service metadata and descriptive attributes
+* Signals relevant to availability or reachability
+
+#### Purpose
+
+Service Profiles enable HC2Gateway to:
+
+* Broker requests between services
+* Route traffic based on declared interfaces
+* Abstract away service location and topology
+* Enforce consistent communication semantics
+
+Services themselves are never aware of Service Profiles directly.
+
+#### Lifecycle
+
+Service Profiles are:
+
+* Created upon successful service registration
+* Updated in response to subsequent registration events
+* Invalidated or removed when a service is no longer registered or reachable
+
+HC2Gateway treats Service Profiles as ephemeral, derived state.
+
+#### System Interactions and Data Flow
+
+The core artifacts described above form a one-directional flow of information:
+
+* **Service Manifest** → consumed by Bumblebee
+* **Service Certificate** → issued by HC2, stored in HC3, injected at runtime
+* **Service Registration Receipt** → returned to the service via HC2Gateway
+* **Service Profile** → derived by HC2Gateway from HC3 notifications
+
+Each artifact has a clearly bounded responsibility, ensuring that no single component becomes a source of implicit coupling.
+
+#### Design Principles and Guarantees
+
+The Services model is governed by several foundational principles:
+
+* Services never communicate directly with HC2 instances
+* HC2Gateway is the sole mediation point for service interaction
+* Certificates establish identity, not behavior
+* Service Profiles are derived state, not declarative input
+* HC3 acts as the durable backbone for service state propagation
+
+These guarantees allow services to remain simple, portable, and agnostic of the underlying control plane.
+
