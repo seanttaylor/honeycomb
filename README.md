@@ -88,7 +88,7 @@ HC2 is responsible for running services, not orchestrating hardware or handling 
 
 ---
 
-### HC2 Services
+### HC2 Services | Application Building Blocks
 
 #### What constitutes an HC2 service
 
@@ -152,7 +152,7 @@ HC3 supports application deployment and runtime behavior by providing a stable, 
 
 ---
 
-### HC0 Hardware Abstraction Layer
+### HC0 | Hardware Abstraction Layer
 
 #### Purpose of HC0
 
